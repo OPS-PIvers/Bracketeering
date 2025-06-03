@@ -89,7 +89,6 @@
         100% { box-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px var(--accent-color), 0 0 20px var(--accent-color); }
     }
 
-
     h1, h2 {
       color: white;
       text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
@@ -97,11 +96,81 @@
     h1 { font-size: 2.5em; margin-bottom: 10px; animation: popIn 0.5s ease-out; }
     h2 { font-size: 1.8em; margin-bottom: 20px; }
 
+    /* Registration View */
+    #registration-view {
+      color: white;
+    }
+    #registration-view .registration-form,
+    #registration-view .confirmation-form {
+      background-color: rgba(255, 255, 255, 0.1);
+      padding: 30px;
+      border-radius: 15px;
+      margin-top: 20px;
+      backdrop-filter: blur(10px);
+    }
+    #registration-view input[type="text"] {
+      width: 100%;
+      max-width: 300px;
+      padding: 12px;
+      margin: 10px 0;
+      border: none;
+      border-radius: 8px;
+      font-size: 1.1em;
+      box-sizing: border-box;
+    }
+    #registration-view button {
+      background: var(--accent-color);
+      color: var(--primary-color);
+      border: none;
+      padding: 12px 25px;
+      border-radius: 25px;
+      font-size: 1.1em;
+      font-weight: 600;
+      cursor: pointer;
+      margin: 10px 5px;
+      transition: transform 0.2s ease;
+    }
+    #registration-view button:hover {
+      transform: scale(1.05);
+    }
+    #registration-view button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+
     /* Waiting Room */
+    #waiting-room {
+      color: white;
+    }
     #waiting-room p {
       font-size: 1.5em;
-      color: white;
       animation: pulse 2s infinite;
+    }
+    .student-list {
+      background-color: rgba(255, 255, 255, 0.1);
+      padding: 20px;
+      border-radius: 15px;
+      margin-top: 20px;
+      backdrop-filter: blur(10px);
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .student-list h3 {
+      margin-top: 0;
+      color: var(--accent-color);
+    }
+    .student-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+      margin-top: 15px;
+    }
+    .student-item {
+      background-color: rgba(255, 255, 255, 0.2);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 0.9em;
     }
 
     /* Voting View */
@@ -123,7 +192,6 @@
         font-weight: bold;
         font-size: 1.2em;
     }
-
 
     #voting-view .prompts-container {
       display: flex;
@@ -195,7 +263,6 @@
         transform: none;
     }
 
-
     .progress-bar-container {
       width: 100%;
       background-color: #e0e0e0;
@@ -246,7 +313,6 @@
         z-index: 10;
         animation: popIn 0.5s ease-out;
     }
-
 
     /* Bracket View */
     #bracket-view {
@@ -356,6 +422,16 @@
         }
     }
 
+    /* Game not available */
+    #game-not-available {
+      color: white;
+      text-align: center;
+    }
+    #game-not-available p {
+      font-size: 1.2em;
+      margin: 20px 0;
+    }
+
     /* Responsive adjustments */
     @media (max-width: 768px) {
       body { padding: 10px; }
@@ -377,6 +453,8 @@
       .round { gap: 15px; min-width: unset; width: 100%; }
       #voting-timer-container { height: 50px; }
       #voting-countdown-svg { width: 80px; height: 80px;}
+      .student-grid { grid-template-columns: 1fr; }
+      #registration-view input[type="text"] { max-width: 250px; }
     }
 
   </style>
@@ -386,10 +464,47 @@
     <div id="loader" class="loader" style="display: none;"></div>
     <div id="message-area" style="color: white; margin-bottom: 10px; min-height: 20px;"></div>
 
+    <div id="game-not-available" class="view">
+      <h1>Prompt Bracket Battle</h1>
+      <p>The game is not currently available for students.</p>
+      <p style="font-size: 0.9em; color: #ddd;">Please wait for your teacher to start the session!</p>
+    </div>
+
+    <div id="registration-view" class="view">
+      <h1>Join the Battle!</h1>
+      
+      <div id="new-student-form" class="registration-form">
+        <h3>Enter Your Information</h3>
+        <input type="text" id="first-name" placeholder="First Name" maxlength="50">
+        <input type="text" id="last-name" placeholder="Last Name" maxlength="50">
+        <br>
+        <button id="register-button" onclick="registerStudent()">Join Game</button>
+      </div>
+
+      <div id="returning-student-form" class="confirmation-form" style="display: none;">
+        <h3>Confirm Your Identity</h3>
+        <p>It looks like you might have been here before. Please confirm your details:</p>
+        <input type="text" id="confirm-first-name" placeholder="First Name" maxlength="50">
+        <input type="text" id="confirm-last-name" placeholder="Last Name" maxlength="50">
+        <input type="text" id="confirm-nickname" placeholder="Your Nickname" maxlength="50">
+        <br>
+        <button id="confirm-button" onclick="confirmIdentity()">Confirm & Continue</button>
+        <button id="new-session-button" onclick="startNewSession()">Start New Session</button>
+      </div>
+    </div>
+
     <div id="waiting-room" class="view">
       <h1>Prompt Bracket Battle</h1>
+      <p id="player-welcome">Welcome, <span id="player-nickname"></span>!</p>
       <p>Waiting for the game to start...</p>
       <p style="font-size: 0.8em; color: #ddd;">Your teacher will launch the prompts soon!</p>
+      
+      <div class="student-list">
+        <h3>Players in Game (<span id="student-count">0</span>)</h3>
+        <div id="student-grid" class="student-grid">
+          <!-- Students will be populated here -->
+        </div>
+      </div>
     </div>
 
     <div id="voting-view" class="view">
@@ -453,6 +568,8 @@
     const loader = document.getElementById('loader');
     const messageArea = document.getElementById('message-area');
     const views = {
+      gameNotAvailable: document.getElementById('game-not-available'),
+      registration: document.getElementById('registration-view'),
       waiting: document.getElementById('waiting-room'),
       voting: document.getElementById('voting-view'),
       bracket: document.getElementById('bracket-view'),
@@ -460,6 +577,7 @@
     };
     let currentGameState = {};
     let pollInterval;
+    let currentStudentInfo = null; // {firstName, lastName, nickname}
     
     let lastDisplayedVotingMatchupId = null; 
     let activeVotingMatchupDetails = null; 
@@ -480,6 +598,238 @@
     const votingTimeUpMessage = document.getElementById('voting-time-up-message');
     const preVotingCountdownDisplay = document.getElementById('pre-voting-countdown-display');
 
+    // --- Student Registration Functions ---
+    function registerStudent() {
+      const firstName = document.getElementById('first-name').value.trim();
+      const lastName = document.getElementById('last-name').value.trim();
+      
+      if (!firstName || !lastName) {
+        showMessage('Please enter both first and last name.', 'error');
+        return;
+      }
+      
+      showLoader(true);
+      document.getElementById('register-button').disabled = true;
+      
+      google.script.run
+        .withSuccessHandler(response => {
+          showLoader(false);
+          document.getElementById('register-button').disabled = false;
+          if (response.success) {
+            currentStudentInfo = {
+              firstName: response.student.firstName,
+              lastName: response.student.lastName,
+              nickname: response.student.nickname
+            };
+            // Store in browser storage for session persistence
+            try {
+              localStorage.setItem('studentInfo', JSON.stringify(currentStudentInfo));
+            } catch (e) {
+              console.log('Could not store student info locally');
+            }
+            showMessage(response.message, 'success');
+            document.getElementById('player-nickname').textContent = currentStudentInfo.nickname;
+            checkGameStateAndShowView();
+          } else {
+            showMessage(response.message || 'Registration failed.', 'error');
+          }
+        })
+        .withFailureHandler(error => {
+          showLoader(false);
+          document.getElementById('register-button').disabled = false;
+          showMessage('Error registering: ' + error.message, 'error');
+          console.error('Registration error:', error);
+        })
+        .registerStudent({ firstName, lastName });
+    }
+
+    function confirmIdentity() {
+      const firstName = document.getElementById('confirm-first-name').value.trim();
+      const lastName = document.getElementById('confirm-last-name').value.trim();
+      const nickname = document.getElementById('confirm-nickname').value.trim();
+      
+      if (!firstName || !lastName || !nickname) {
+        showMessage('Please fill in all fields to confirm your identity.', 'error');
+        return;
+      }
+      
+      showLoader(true);
+      document.getElementById('confirm-button').disabled = true;
+      
+      google.script.run
+        .withSuccessHandler(response => {
+          showLoader(false);
+          document.getElementById('confirm-button').disabled = false;
+          if (response.success) {
+            currentStudentInfo = {
+              firstName: response.student.firstName,
+              lastName: response.student.lastName,
+              nickname: response.student.nickname
+            };
+            try {
+              localStorage.setItem('studentInfo', JSON.stringify(currentStudentInfo));
+            } catch (e) {
+              console.log('Could not store student info locally');
+            }
+            showMessage(response.message, 'success');
+            document.getElementById('player-nickname').textContent = currentStudentInfo.nickname;
+            checkGameStateAndShowView();
+          } else {
+            showMessage(response.message || 'Identity confirmation failed.', 'error');
+          }
+        })
+        .withFailureHandler(error => {
+          showLoader(false);
+          document.getElementById('confirm-button').disabled = false;
+          showMessage('Error confirming identity: ' + error.message, 'error');
+          console.error('Confirmation error:', error);
+        })
+        .confirmStudentIdentity({ firstName, lastName, nickname });
+    }
+
+    function startNewSession() {
+      // Clear any stored student info
+      try {
+        localStorage.removeItem('studentInfo');
+      } catch (e) {
+        console.log('Could not clear stored student info');
+      }
+      currentStudentInfo = null;
+      
+      // Clear the form fields
+      document.getElementById('first-name').value = '';
+      document.getElementById('last-name').value = '';
+      
+      // Show new student form
+      document.getElementById('new-student-form').style.display = 'block';
+      document.getElementById('returning-student-form').style.display = 'none';
+    }
+
+    function checkForExistingStudent() {
+      try {
+        const stored = localStorage.getItem('studentInfo');
+        if (stored) {
+          const studentInfo = JSON.parse(stored);
+          if (studentInfo.firstName && studentInfo.lastName && studentInfo.nickname) {
+            // Show confirmation form
+            document.getElementById('new-student-form').style.display = 'none';
+            document.getElementById('returning-student-form').style.display = 'block';
+            return true;
+          }
+        }
+      } catch (e) {
+        console.log('Error checking for existing student info');
+      }
+      return false;
+    }
+
+    function updateStudentList(students) {
+      const studentGrid = document.getElementById('student-grid');
+      const studentCount = document.getElementById('student-count');
+      
+      studentCount.textContent = students.length;
+      studentGrid.innerHTML = '';
+      
+      students.forEach(student => {
+        const studentItem = document.createElement('div');
+        studentItem.className = 'student-item';
+        studentItem.textContent = student.nickname;
+        studentGrid.appendChild(studentItem);
+      });
+    }
+
+    function checkGameStateAndShowView() {
+      if (!currentGameState.status) {
+        showView('gameNotAvailable');
+        return;
+      }
+
+      if (currentGameState.status === 'waiting') {
+        if (!currentStudentInfo) {
+          showView('registration');
+          if (!checkForExistingStudent()) {
+            document.getElementById('new-student-form').style.display = 'block';
+            document.getElementById('returning-student-form').style.display = 'none';
+          }
+        } else {
+          document.getElementById('player-nickname').textContent = currentStudentInfo.nickname;
+          if (currentGameState.students) {
+            updateStudentList(currentGameState.students);
+          }
+          showView('waiting');
+        }
+      } else {
+        // Game is active, handle other states
+        handleActiveGameStates();
+      }
+    }
+
+    function handleActiveGameStates() {
+      if (!currentStudentInfo) {
+        showView('gameNotAvailable');
+        showMessage('Game is in progress. Please wait for the next game session.', 'info');
+        return;
+      }
+
+      // Handle voting, bracket, game over states as before
+      const previousStatus = currentGameState.status;
+      const previousActiveMatchupIdForVotingView = activeVotingMatchupDetails ? (activeVotingMatchupDetails.promptA.id + "_" + activeVotingMatchupDetails.promptB.id) : null;
+
+      if (transitionToBracketTimeout) clearTimeout(transitionToBracketTimeout);
+
+      if (currentGameState.status === 'voting' && currentGameState.activeMatchup) {
+        const newActiveMatchupIdForVotingView = currentGameState.activeMatchup.promptA.id + "_" + currentGameState.activeMatchup.promptB.id;
+
+        if (lastDisplayedVotingMatchupId !== newActiveMatchupIdForVotingView && currentGameState.status !== 'voting_pending_pre_countdown') {
+            currentGameState.status = 'voting_pending_pre_countdown';
+            activeVotingMatchupDetails = currentGameState.activeMatchup; 
+
+            renderBracket(currentGameState.bracket, 'bracket-container');
+            highlightActiveMatchupInBracket(currentGameState.activeMatchup);
+            showView('bracket');
+            showMessage(`Next matchup: ${currentGameState.activeMatchup.promptA.text} vs ${currentGameState.activeMatchup.promptB.text}`, 'info', true);
+            startPreVotingCountdown(currentGameState.activeMatchup); 
+        } 
+        else if (currentGameState.status !== 'voting_pending_pre_countdown') {
+            activeVotingMatchupDetails = currentGameState.activeMatchup;
+            lastDisplayedVotingMatchupId = newActiveMatchupIdForVotingView;
+
+            updateVotingView(currentGameState.activeMatchup);
+            showView('voting'); 
+        }
+      } else if (currentGameState.status === 'round_over' || currentGameState.status === 'round_over_pending_auto_advance') {
+        stopVotingCountdown(); 
+        stopPreVotingCountdown(); 
+        
+        const matchupThatEnded = activeVotingMatchupDetails || currentGameState.activeMatchup; 
+
+        if (matchupThatEnded && matchupThatEnded.round !== undefined) { 
+            updateVotingView(matchupThatEnded); 
+            showView('voting'); 
+            
+            const bracketForEndedMatchup = currentGameState.bracket[matchupThatEnded.round] || (currentGameState.bracket ? currentGameState.bracket[matchupThatEnded.round] : null);
+            if (bracketForEndedMatchup && bracketForEndedMatchup[matchupThatEnded.matchupIndexInRound]) {
+                const endedBracketEntry = bracketForEndedMatchup[matchupThatEnded.matchupIndexInRound];
+                if (endedBracketEntry.winner) {
+                     highlightWinnerLoser(endedBracketEntry.winner.id === matchupThatEnded.promptA.id ? 'A' : 'B');
+                }
+            }
+            
+            showMessage('Advancing to next state...', 'info', true);
+
+        } else { 
+            renderBracket(currentGameState.bracket);
+            showView('bracket');
+            showMessage('Round over. Waiting for teacher or auto-advance.', 'info', true);
+        }
+      } else if (currentGameState.status === 'game_over') {
+        displayGameOver();
+        if (pollInterval) clearInterval(pollInterval); 
+      } else {
+        showView('gameNotAvailable');
+        showMessage('Game state changed. Please wait for updates.', 'info', true);
+      }
+    }
 
     // --- UI Update Functions ---
     function showView(viewName) {
@@ -491,7 +841,6 @@
           document.getElementById('promptA-card').classList.remove('winner', 'loser', 'slide-in-left', 'slide-in-right');
           document.getElementById('promptB-card').classList.remove('winner', 'loser', 'slide-in-left', 'slide-in-right');
           document.querySelectorAll('.winner-banner').forEach(banner => banner.remove());
-          // Timer display is handled by updateVotingView based on state
       } else if (viewName === 'bracket') {
           preVotingCountdownDisplay.style.display = 'none'; 
       }
@@ -525,17 +874,17 @@
         stopVotingCountdown(); 
         
         const now = Date.now();
-        const totalDuration = (endTime - startTime) / 1000; // Total duration from server
-        votingTimeRemaining = Math.max(0, Math.round((endTime - now) / 1000)); // Remaining time based on server end time
+        const totalDuration = (endTime - startTime) / 1000;
+        votingTimeRemaining = Math.max(0, Math.round((endTime - now) / 1000));
 
-        if (votingTimeRemaining <= 0) { // If time is already up based on server
+        if (votingTimeRemaining <= 0) {
             handleVotingTimeUp();
             return;
         }
 
         votingCountdownSVG.style.display = 'block';
         votingTimeUpMessage.style.display = 'none';
-        updateVotingTimerDisplay(totalDuration); // Pass total duration for progress calculation
+        updateVotingTimerDisplay(totalDuration);
 
         document.getElementById('voteA-button').disabled = currentGameState.activeMatchup?.currentUserHasVoted || false;
         document.getElementById('voteB-button').disabled = currentGameState.activeMatchup?.currentUserHasVoted || false;
@@ -555,14 +904,12 @@
     }
 
     function updateVotingTimerDisplay(totalDuration = VOTING_DURATION_SECONDS) {
-        // Calculate progress based on the initial total duration and current remaining time
         const elapsed = totalDuration - votingTimeRemaining;
         const progress = totalDuration > 0 ? (elapsed / totalDuration) * 100 : 0;
         
-        votingCountdownPath.style.strokeDashoffset = 100 - Math.min(100, Math.max(0, progress)); // Cap progress at 0-100
+        votingCountdownPath.style.strokeDashoffset = 100 - Math.min(100, Math.max(0, progress));
         votingCountdownText.textContent = `${Math.max(0, votingTimeRemaining)}s`;
     }
-
 
     function handleVotingTimeUp() {
         stopVotingCountdown();
@@ -571,7 +918,6 @@
         document.getElementById('voteA-button').disabled = true;
         document.getElementById('voteB-button').disabled = true;
         showMessage("Time's up! Waiting for results...", 'info', true);
-        // Server will handle actual advancement via polling in getGameData
     }
 
     function startPreVotingCountdown(matchupForNextVote) {
@@ -593,7 +939,6 @@
 
                 updateVotingView(activeVotingMatchupDetails);
                 showView('voting');
-                // Start voting countdown using server-provided times if available
                 if (activeVotingMatchupDetails.votingStartTime && activeVotingMatchupDetails.votingEndTime) {
                      startVotingCountdown(activeVotingMatchupDetails.votingStartTime, activeVotingMatchupDetails.votingEndTime);
                 }
@@ -610,7 +955,6 @@
     function updatePreVotingTimerDisplay() {
         preVotingCountdownDisplay.textContent = `Next matchup starts in: ${preVotingTimeRemaining}s`;
     }
-
 
     function updateVotingView(matchup) {
       if (!matchup) {
@@ -647,20 +991,19 @@
       updateProgressBars(matchup.votesA, matchup.votesB);
       
       const isRoundOver = currentGameState.status === 'round_over' || currentGameState.status === 'round_over_pending_auto_advance';
-      const clientTimerExpired = votingTimeRemaining <= 0 && votingCountdownInterval !== null; // Check if client timer ran out
+      const clientTimerExpired = votingTimeRemaining <= 0 && votingCountdownInterval !== null;
 
       if (matchup.currentUserHasVoted) {
           voteAButton.disabled = true;
           voteBButton.disabled = true;
           votedMessageEl.style.display = 'block';
           votingInstructionsEl.style.display = 'none';
-          // Timer continues unless round is over or client timer expired
           if (isRoundOver || clientTimerExpired) {
               stopVotingCountdown();
               votingCountdownSVG.style.display = 'none';
               votingTimeUpMessage.style.display = clientTimerExpired && !isRoundOver ? 'block' : 'none';
           } else {
-              votingCountdownSVG.style.display = 'block'; // Ensure timer is visible if still running
+              votingCountdownSVG.style.display = 'block';
               votingTimeUpMessage.style.display = 'none';
           }
       } else if (isRoundOver || clientTimerExpired) {
@@ -669,10 +1012,10 @@
           votedMessageEl.style.display = 'none';
           votingInstructionsEl.textContent = 'Voting for this matchup has ended.';
           votingInstructionsEl.style.display = 'block';
-          stopVotingCountdown(); // Stop if server says round_over or client timer expired
+          stopVotingCountdown();
           votingCountdownSVG.style.display = 'none';
           votingTimeUpMessage.style.display = clientTimerExpired && !isRoundOver ? 'block' : 'none';
-      } else { // Active voting, user hasn't voted, round not over, client timer not expired
+      } else {
           voteAButton.disabled = false;
           voteBButton.disabled = false;
           votedMessageEl.style.display = 'none';
@@ -680,7 +1023,6 @@
           votingInstructionsEl.style.display = 'block';
           votingCountdownSVG.style.display = 'block';
           votingTimeUpMessage.style.display = 'none';
-           // If countdown isn't running for this matchup, start it using server times
           if (!votingCountdownInterval && matchup.votingStartTime && matchup.votingEndTime) {
              startVotingCountdown(matchup.votingStartTime, matchup.votingEndTime);
           }
@@ -786,7 +1128,6 @@
         }
     }
 
-
     function displayGameOver() {
         const winner = findFinalWinner(currentGameState.bracket);
         document.getElementById('final-winner-text').textContent = winner ? winner.text : "It's a tie or error!";
@@ -826,80 +1167,10 @@
       google.script.run
         .withSuccessHandler(data => {
           const previousStatus = currentGameState.status;
-          const previousActiveMatchupIdForVotingView = activeVotingMatchupDetails ? (activeVotingMatchupDetails.promptA.id + "_" + activeVotingMatchupDetails.promptB.id) : null;
-          
-          currentGameState = data; // Update global state
+          currentGameState = data;
           console.log("Game data received:", data);
 
-          if (transitionToBracketTimeout) clearTimeout(transitionToBracketTimeout);
-
-          if (data.status === 'voting' && data.activeMatchup) {
-            const newActiveMatchupIdForVotingView = data.activeMatchup.promptA.id + "_" + data.activeMatchup.promptB.id;
-
-            // Scenario 1: A brand new matchup is launched by teacher (or auto-advanced to a new voting round)
-            // And we are not already in a pre-voting countdown for this *exact* matchup.
-            if (lastDisplayedVotingMatchupId !== newActiveMatchupIdForVotingView && currentGameState.status !== 'voting_pending_pre_countdown') {
-                currentGameState.status = 'voting_pending_pre_countdown'; // Internal client state
-                activeVotingMatchupDetails = data.activeMatchup; 
-
-                renderBracket(data.bracket, 'bracket-container');
-                highlightActiveMatchupInBracket(data.activeMatchup);
-                showView('bracket');
-                showMessage(`Next matchup: ${data.activeMatchup.promptA.text} vs ${data.activeMatchup.promptB.text}`, 'info', true);
-                startPreVotingCountdown(data.activeMatchup); 
-            } 
-            // Scenario 2: We are already in the pre-voting countdown (handled by its interval) or it just finished
-            // OR it's the same matchup (e.g. votes updated, user joined mid-vote)
-            else if (currentGameState.status !== 'voting_pending_pre_countdown') {
-                activeVotingMatchupDetails = data.activeMatchup;
-                lastDisplayedVotingMatchupId = newActiveMatchupIdForVotingView;
-
-                updateVotingView(data.activeMatchup); // This will also handle starting/continuing the timer
-                showView('voting'); 
-            }
-          } else if (data.status === 'round_over' || data.status === 'round_over_pending_auto_advance') {
-            stopVotingCountdown(); 
-            stopPreVotingCountdown(); 
-            
-            const matchupThatEnded = activeVotingMatchupDetails || data.activeMatchup; 
-
-            if (matchupThatEnded && matchupThatEnded.round !== undefined) { 
-                updateVotingView(matchupThatEnded); 
-                showView('voting'); 
-                
-                const bracketForEndedMatchup = data.bracket[matchupThatEnded.round] || (currentGameState.bracket ? currentGameState.bracket[matchupThatEnded.round] : null);
-                if (bracketForEndedMatchup && bracketForEndedMatchup[matchupThatEnded.matchupIndexInRound]) {
-                    const endedBracketEntry = bracketForEndedMatchup[matchupThatEnded.matchupIndexInRound];
-                    if (endedBracketEntry.winner) {
-                         highlightWinnerLoser(endedBracketEntry.winner.id === matchupThatEnded.promptA.id ? 'A' : 'B');
-                    }
-                }
-                
-                // Server will auto-advance, so client doesn't need to force transition to bracket after a short delay.
-                // Client will just wait for the next poll to get the new state (likely 'voting' for next matchup or 'game_over').
-                // We can show a message that it's advancing.
-                showMessage('Advancing to next state...', 'info', true);
-
-            } else { 
-                renderBracket(data.bracket);
-                showView('bracket');
-                showMessage('Round over. Waiting for teacher or auto-advance.', 'info', true);
-            }
-            // lastDisplayedVotingMatchupId = null; // Reset for next matchup; done when new matchup starts
-            // activeVotingMatchupDetails = null; // Reset for next matchup; done when new matchup starts
-          } else if (data.status === 'game_over') {
-            displayGameOver();
-            if (pollInterval) clearInterval(pollInterval); 
-          } else if (data.status === 'waiting' || data.status === 'setup') {
-            stopVotingCountdown(); stopPreVotingCountdown();
-            showView('waiting');
-            showMessage(data.status === 'setup' ? 'Game is being set up. Please wait.' : 'Waiting for the game to start...', 'info', true);
-            lastDisplayedVotingMatchupId = null; activeVotingMatchupDetails = null;
-          } else {
-            console.warn("Unknown game state or no active matchup:", data);
-            showView('waiting'); 
-            showMessage('Waiting for game to start or continue.', 'info', true);
-          }
+          checkGameStateAndShowView();
         })
         .withFailureHandler(error => {
           showMessage('Error fetching game data: ' + error.message, 'error');
@@ -909,6 +1180,11 @@
     }
 
     function handleVote(promptCode) {
+      if (!currentStudentInfo) {
+        showMessage('You must be registered to vote.', 'error');
+        return;
+      }
+
       showLoader(true);
       document.getElementById('voteA-button').disabled = true;
       document.getElementById('voteB-button').disabled = true;
@@ -942,7 +1218,7 @@
           }
           console.error('Vote error:', error);
         })
-        .submitVote({ code: promptCode });
+        .submitVote({ code: promptCode, studentNickname: currentStudentInfo.nickname });
     }
 
     // --- Initialization ---

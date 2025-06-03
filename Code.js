@@ -1,6 +1,7 @@
 // --- Global Variables & Configuration ---
 const SPREADSHEET_ID = '1aVmXdoThzsfjsEtV-vys3movt5FPc2QYXAWJlntPSh4'; // Replace with your Google Sheet ID
 const PROMPTS_SHEET_NAME = 'Prompts'; // Sheet name where prompts are listed
+const STUDENTS_SHEET_NAME = 'Students'; // Sheet for tracking student registrations and votes
 const GAME_STATE_SHEET_NAME = 'GameState'; // Sheet for storing game state (optional, can also use PropertiesService)
 const VOTING_DURATION_SECONDS = 20; // Define voting duration
 
@@ -10,8 +11,36 @@ let gameState = {
   currentMatchupIndex: 0,
   prompts: [], // Will be loaded from sheet: [{id: 1, text: "Prompt A"}, {id: 2, text: "Prompt B"}, ...]
   bracket: [], // Structure: [[{prompt1, prompt2, winner, votes1, votes2, voters: [], votingStartTime, votingEndTime}], [{...next round...}]]
-  activeMatchup: null // { promptA, promptB, votesA, votesB, codeA, codeB, voters: [], votingStartTime, votingEndTime }
+  activeMatchup: null, // { promptA, promptB, votesA, votesB, codeA, codeB, voters: [], votingStartTime, votingEndTime }
+  students: [] // List of registered students: [{firstName, lastName, nickname, sessionKey}]
 };
+
+// --- Nickname Generation ---
+const ADJECTIVES = ['Swift', 'Clever', 'Brave', 'Mighty', 'Sneaky', 'Bold', 'Quick', 'Wise', 'Lucky', 'Fierce', 'Gentle', 'Sharp', 'Bright', 'Cool', 'Wild', 'Silent', 'Strong', 'Fast', 'Smart', 'Calm'];
+const COLORS = ['Red', 'Blue', 'Green', 'Purple', 'Orange', 'Silver', 'Golden', 'Crimson', 'Azure', 'Emerald', 'Violet', 'Amber', 'Coral', 'Indigo', 'Teal', 'Pink', 'Yellow', 'Black', 'White', 'Gray'];
+const ANIMALS = ['Tiger', 'Eagle', 'Wolf', 'Bear', 'Fox', 'Lion', 'Hawk', 'Shark', 'Panther', 'Dragon', 'Falcon', 'Leopard', 'Rhino', 'Cobra', 'Raven', 'Lynx', 'Jaguar', 'Owl', 'Viper', 'Phoenix'];
+
+function generateNickname_() {
+  const adjective = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+  const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+  const animal = ANIMALS[Math.floor(Math.random() * ANIMALS.length)];
+  return `${adjective} ${color} ${animal}`;
+}
+
+function generateUniqueNickname_(existingNicknames) {
+  let nickname;
+  let attempts = 0;
+  do {
+    nickname = generateNickname_();
+    attempts++;
+    if (attempts > 100) {
+      // Fallback with numbers if we can't generate unique after 100 attempts
+      nickname = generateNickname_() + ' ' + Math.floor(Math.random() * 1000);
+      break;
+    }
+  } while (existingNicknames.includes(nickname));
+  return nickname;
+}
 
 // --- Game State Persistence Functions ---
 function loadGameStateFromProperties_() {
@@ -26,12 +55,16 @@ function loadGameStateFromProperties_() {
         prompts: [], 
         bracket: [], 
         activeMatchup: null,
+        students: [],
         ...loadedState 
       };
       Logger.log('GameState loaded from PropertiesService.');
       if ((!gameState.prompts || gameState.prompts.length === 0) && gameState.status !== 'game_over') {
         Logger.log('Prompts empty or not present in loaded state, attempting to load from sheet.');
         loadPromptsFromSheet_();
+      }
+      if (!gameState.students) {
+        gameState.students = [];
       }
     } else {
       Logger.log('No saved game state found in PropertiesService. Initializing and loading prompts.');
@@ -41,7 +74,8 @@ function loadGameStateFromProperties_() {
         currentMatchupIndex: 0,
         prompts: [],
         bracket: [],
-        activeMatchup: null
+        activeMatchup: null,
+        students: []
       };
       loadPromptsFromSheet_();
     }
@@ -53,7 +87,8 @@ function loadGameStateFromProperties_() {
         currentMatchupIndex: 0,
         prompts: [],
         bracket: [],
-        activeMatchup: null
+        activeMatchup: null,
+        students: []
       };
     loadPromptsFromSheet_();
     PropertiesService.getScriptProperties().deleteProperty('gameState');
@@ -67,11 +102,133 @@ function saveGameStateToProperties_() {
     Logger.log('GameState saved to PropertiesService.');
   } catch (e) {
     Logger.log(`Error saving game state to PropertiesService: ${e.toString()}`);
-    // Avoid SpreadsheetApp.getUi().alert() in server-side logic that might run automatically
     Logger.log('Critical Error: Could not save game state. Please check logs for teacher action if issue persists.');
   }
 }
 
+// --- Students Sheet Management ---
+function createStudentsSheet_() {
+  try {
+    let ss;
+    if (SPREADSHEET_ID && SPREADSHEET_ID !== 'YOUR_SPREADSHEET_ID') {
+        ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    } else {
+        ss = SpreadsheetApp.getActiveSpreadsheet();
+    }
+    
+    if (!ss) {
+        Logger.log('Could not get spreadsheet instance for creating Students sheet.');
+        return null;
+    }
+
+    let sheet = ss.getSheetByName(STUDENTS_SHEET_NAME);
+    if (sheet) {
+        Logger.log('Students sheet already exists.');
+        return sheet;
+    }
+
+    sheet = ss.insertSheet(STUDENTS_SHEET_NAME);
+    // Set up headers
+    const headers = ['First Name', 'Last Name', 'Nickname'];
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+    
+    Logger.log('Students sheet created successfully.');
+    return sheet;
+  } catch (e) {
+    Logger.log(`Error creating Students sheet: ${e.toString()}`);
+    return null;
+  }
+}
+
+function addStudentToSheet_(student) {
+  try {
+    const sheet = createStudentsSheet_();
+    if (!sheet) {
+      Logger.log('Could not access Students sheet for adding student.');
+      return false;
+    }
+
+    const lastRow = sheet.getLastRow();
+    const newRow = lastRow + 1;
+    
+    // Add student data
+    sheet.getRange(newRow, 1, 1, 3).setValues([[
+      student.firstName,
+      student.lastName,
+      student.nickname
+    ]]);
+    
+    Logger.log(`Added student ${student.nickname} to sheet at row ${newRow}.`);
+    return true;
+  } catch (e) {
+    Logger.log(`Error adding student to sheet: ${e.toString()}`);
+    return false;
+  }
+}
+
+function addVoteColumnHeader_(roundNumber) {
+  try {
+    const sheet = createStudentsSheet_();
+    if (!sheet) return false;
+
+    const headerRow = 1;
+    const voteColumnIndex = 4 + roundNumber - 1; // Columns D, E, F, etc.
+    const headerName = `Round ${roundNumber} Vote`;
+    
+    // Check if header already exists
+    const currentHeader = sheet.getRange(headerRow, voteColumnIndex).getValue();
+    if (currentHeader === headerName) {
+      return true; // Already exists
+    }
+    
+    sheet.getRange(headerRow, voteColumnIndex).setValue(headerName);
+    sheet.getRange(headerRow, voteColumnIndex).setFontWeight('bold');
+    
+    Logger.log(`Added vote column header for Round ${roundNumber}.`);
+    return true;
+  } catch (e) {
+    Logger.log(`Error adding vote column header: ${e.toString()}`);
+    return false;
+  }
+}
+
+function recordVoteInSheet_(nickname, roundNumber, votedFor) {
+  try {
+    const sheet = createStudentsSheet_();
+    if (!sheet) return false;
+
+    // Find the student's row
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return false; // No data rows
+    
+    const nicknameColumn = 3; // Column C
+    const nicknameRange = sheet.getRange(2, nicknameColumn, lastRow - 1, 1);
+    const nicknames = nicknameRange.getValues().flat();
+    
+    const studentRowIndex = nicknames.indexOf(nickname);
+    if (studentRowIndex === -1) {
+      Logger.log(`Student with nickname ${nickname} not found in sheet.`);
+      return false;
+    }
+    
+    const studentRow = studentRowIndex + 2; // Add 2 because we started from row 2 and arrays are 0-indexed
+    const voteColumnIndex = 4 + roundNumber - 1; // Columns D, E, F, etc.
+    
+    // Ensure the vote column header exists
+    addVoteColumnHeader_(roundNumber);
+    
+    // Record the vote
+    sheet.getRange(studentRow, voteColumnIndex).setValue(votedFor);
+    
+    Logger.log(`Recorded vote for ${nickname} in Round ${roundNumber}: ${votedFor}`);
+    return true;
+  } catch (e) {
+    Logger.log(`Error recording vote in sheet: ${e.toString()}`);
+    return false;
+  }
+}
 
 // --- Custom Menu ---
 function onOpen() {
@@ -109,9 +266,11 @@ function startGameMenuItem() {
   gameState.currentMatchupIndex = 0;
   gameState.bracket = [];
   gameState.activeMatchup = null;
+  gameState.students = []; // Reset students for new game
   setupInitialBracket_(); 
+  createStudentsSheet_(); // Ensure Students sheet exists
 
-  SpreadsheetApp.getUi().alert('Game set to "Waiting Room". Students can now open the web app.');
+  SpreadsheetApp.getUi().alert('Game set to "Waiting Room". Students can now register and join the web app.');
   saveGameStateToProperties_();
 }
 
@@ -123,10 +282,9 @@ function launchNextRoundMenuItem() {
       return;
   }
 
-  // If voting was active, determine winner. This also handles cases where teacher ends voting early.
   if (gameState.status === 'voting' && gameState.activeMatchup) {
     Logger.log('Teacher manually advancing from voting state.');
-    determineWinnerAndAdvance_(); // This will set status to 'round_over'
+    determineWinnerAndAdvance_();
   }
 
   if (gameState.status === 'game_over') {
@@ -134,31 +292,27 @@ function launchNextRoundMenuItem() {
     return;
   }
 
-  // At this point, status should be 'waiting', 'round_over', or just became 'round_over'
   const success = prepareNextMatchup_(); 
   if (success) {
-    gameState.status = 'voting'; // prepareNextMatchup_ sets new activeMatchup with new timer
+    gameState.status = 'voting';
     SpreadsheetApp.getUi().alert(`Round ${gameState.currentRound + 1}, Matchup ${gameState.currentMatchupIndex + 1} launched!`);
   } else {
-    // No more matchups in current round, or couldn't prepare one.
-    // Check if all matchups in the current round have winners
     if (gameState.bracket[gameState.currentRound] && gameState.bracket[gameState.currentRound].every(m => m.winner)) {
         if (gameState.bracket[gameState.currentRound].length === 1 && gameState.bracket[gameState.currentRound][0].winner) {
             gameState.status = 'game_over';
             gameState.activeMatchup = null;
             SpreadsheetApp.getUi().alert('Game Over! Final winner determined.');
         } else {
-            // Advance to the next round
             gameState.currentRound++;
             gameState.currentMatchupIndex = 0; 
             setupNextRoundBracket_(); 
 
-            if (gameState.status === 'game_over') { // setupNextRoundBracket_ might set game_over
+            if (gameState.status === 'game_over') {
                 SpreadsheetApp.getUi().alert('Game Over! Determined after setting up next round.');
             } else {
                 const nextRoundSuccess = prepareNextMatchup_();
                 if (nextRoundSuccess) {
-                    gameState.status = 'voting'; // New matchup, new timer
+                    gameState.status = 'voting';
                     SpreadsheetApp.getUi().alert(`Advanced to Round ${gameState.currentRound + 1}. Next matchup launched!`);
                 } else {
                     if(gameState.status === 'game_over'){ 
@@ -170,8 +324,6 @@ function launchNextRoundMenuItem() {
             }
         }
     } else {
-      // This case implies current round is not finished, but prepareNextMatchup failed.
-      // This might happen if launchNextRoundMenuItem is called when status is 'waiting' and no matchups are ready.
       if (gameState.status !== 'game_over') { 
           SpreadsheetApp.getUi().alert('Could not prepare the next matchup. Current round may not be complete or an error occurred. Check logs.');
       }
@@ -180,7 +332,6 @@ function launchNextRoundMenuItem() {
   saveGameStateToProperties_();
 }
 
-
 function resetGameMenuItem() {
   gameState = {
     status: 'setup',
@@ -188,22 +339,43 @@ function resetGameMenuItem() {
     currentMatchupIndex: 0,
     prompts: [],
     bracket: [],
-    activeMatchup: null
+    activeMatchup: null,
+    students: []
   };
   loadPromptsFromSheet_();
-  SpreadsheetApp.getUi().alert('Game has been reset. Prompts reloaded from sheet.');
+  
+  // Clear the Students sheet
+  try {
+    let ss;
+    if (SPREADSHEET_ID && SPREADSHEET_ID !== 'YOUR_SPREADSHEET_ID') {
+        ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    } else {
+        ss = SpreadsheetApp.getActiveSpreadsheet();
+    }
+    
+    const sheet = ss.getSheetByName(STUDENTS_SHEET_NAME);
+    if (sheet) {
+      sheet.clear();
+      const headers = ['First Name', 'Last Name', 'Nickname'];
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+      Logger.log('Students sheet cleared and headers reset.');
+    }
+  } catch (e) {
+    Logger.log(`Error clearing Students sheet: ${e.toString()}`);
+  }
+  
+  SpreadsheetApp.getUi().alert('Game has been reset. Prompts reloaded from sheet and Students sheet cleared.');
   saveGameStateToProperties_();
 }
 
 // --- Core Game Logic ---
-
 function setupInitialBracket_() {
   if (!gameState.prompts || gameState.prompts.length === 0) {
       Logger.log('setupInitialBracket_: No prompts available. Attempting load.');
       loadPromptsFromSheet_();
       if (!gameState.prompts || gameState.prompts.length === 0) {
           Logger.log('Cannot set up bracket: No prompts found even after reload.');
-          // Avoid UI alert here if it can be called automatically
           return; 
       }
   }
@@ -299,7 +471,6 @@ function setupNextRoundBracket_() {
     }
 }
 
-
 function prepareNextMatchup_() {
   if (!gameState.bracket[gameState.currentRound] || gameState.bracket[gameState.currentRound].length === 0) {
     Logger.log(`No matchups defined for Round ${gameState.currentRound + 1}. Cannot prepare.`);
@@ -333,10 +504,10 @@ function prepareNextMatchup_() {
       voters: matchupToSet.voters || [], 
       round: gameState.currentRound,
       matchupIndexInRound: gameState.currentMatchupIndex,
-      votingStartTime: now, // ADDED
-      votingEndTime: votingEndTime // ADDED
+      votingStartTime: now,
+      votingEndTime: votingEndTime
     };
-    // Also store voting end time in the bracket data for persistence
+    
     if(gameState.bracket[gameState.currentRound] && gameState.bracket[gameState.currentRound][foundMatchupIndex]){
         gameState.bracket[gameState.currentRound][foundMatchupIndex].votingStartTime = now;
         gameState.bracket[gameState.currentRound][foundMatchupIndex].votingEndTime = votingEndTime;
@@ -352,17 +523,14 @@ function prepareNextMatchup_() {
 }
 
 function determineWinnerAndAdvance_() {
-  if (!gameState.activeMatchup ) { // Removed status check here, as it might be called after timer
+  if (!gameState.activeMatchup ) {
     Logger.log('determineWinnerAndAdvance_: No active matchup to determine winner.');
     return; 
   }
    if (gameState.status !== 'voting' && gameState.status !== 'round_over_pending_auto_advance') {
-      // If status is already 'round_over' (e.g. teacher clicked advance after timer already processed it), do nothing.
-      // Or if status is not voting (e.g. 'waiting'), do nothing.
       Logger.log(`determineWinnerAndAdvance_ called with status ${gameState.status}. No action taken.`);
       return;
   }
-
 
   const { promptA, promptB, votesA, votesB, round, matchupIndexInRound } = gameState.activeMatchup;
   let winner = null;
@@ -383,13 +551,137 @@ function determineWinnerAndAdvance_() {
     gameState.bracket[round][matchupIndexInRound].winner = winner;
     gameState.bracket[round][matchupIndexInRound].votesA = votesA; 
     gameState.bracket[round][matchupIndexInRound].votesB = votesB;
-    gameState.status = 'round_over'; // Set status to indicate the round for this matchup is over
+    gameState.status = 'round_over';
     Logger.log(`Winner of R${round+1}, M${matchupIndexInRound+1} ("${promptA.text}" vs "${promptB.text}") is: "${winner.text}". Status set to round_over.`);
   } else {
     Logger.log(`Error in determineWinnerAndAdvance_: Could not find matchup in bracket at R${round}, M${matchupIndexInRound} to update winner.`);
   }
 }
 
+// --- Student Registration Functions ---
+function registerStudent(registrationData) {
+  loadGameStateFromProperties_();
+  
+  if (gameState.status !== 'waiting') {
+    return { 
+      success: false, 
+      message: 'Student registration is only available when the game is in waiting room mode.' 
+    };
+  }
+
+  const { firstName, lastName } = registrationData;
+  
+  if (!firstName || !lastName || firstName.trim() === '' || lastName.trim() === '') {
+    return { 
+      success: false, 
+      message: 'First name and last name are required.' 
+    };
+  }
+
+  const cleanFirstName = firstName.trim();
+  const cleanLastName = lastName.trim();
+  const sessionKey = Session.getTemporaryActiveUserKey();
+  
+  // Check if this session key is already registered
+  const existingStudent = gameState.students.find(s => s.sessionKey === sessionKey);
+  if (existingStudent) {
+    return { 
+      success: false, 
+      message: 'This browser session is already registered. Please refresh the page if you need to re-register.' 
+    };
+  }
+  
+  // Generate unique nickname
+  const existingNicknames = gameState.students.map(s => s.nickname);
+  const nickname = generateUniqueNickname_(existingNicknames);
+  
+  const newStudent = {
+    firstName: cleanFirstName,
+    lastName: cleanLastName,
+    nickname: nickname,
+    sessionKey: sessionKey
+  };
+  
+  // Add to game state
+  gameState.students.push(newStudent);
+  
+  // Add to sheet
+  const sheetSuccess = addStudentToSheet_(newStudent);
+  if (!sheetSuccess) {
+    Logger.log('Warning: Could not add student to sheet, but proceeding with registration.');
+  }
+  
+  saveGameStateToProperties_();
+  
+  Logger.log(`Student registered: ${cleanFirstName} ${cleanLastName} as ${nickname}`);
+  
+  return {
+    success: true,
+    message: `Welcome, ${nickname}!`,
+    student: {
+      firstName: cleanFirstName,
+      lastName: cleanLastName,
+      nickname: nickname
+    }
+  };
+}
+
+function confirmStudentIdentity(confirmationData) {
+  loadGameStateFromProperties_();
+  
+  if (gameState.status !== 'waiting') {
+    return { 
+      success: false, 
+      message: 'Student registration is only available when the game is in waiting room mode.' 
+    };
+  }
+
+  const { firstName, lastName, nickname } = confirmationData;
+  
+  if (!firstName || !lastName || !nickname || 
+      firstName.trim() === '' || lastName.trim() === '' || nickname.trim() === '') {
+    return { 
+      success: false, 
+      message: 'All fields are required for identity confirmation.' 
+    };
+  }
+
+  const cleanFirstName = firstName.trim();
+  const cleanLastName = lastName.trim();
+  const cleanNickname = nickname.trim();
+  
+  // Find student with matching details
+  const existingStudent = gameState.students.find(s => 
+    s.firstName.toLowerCase() === cleanFirstName.toLowerCase() &&
+    s.lastName.toLowerCase() === cleanLastName.toLowerCase() &&
+    s.nickname === cleanNickname
+  );
+  
+  if (!existingStudent) {
+    return { 
+      success: false, 
+      message: 'Could not find a student with those details. Please check your information or start a new session.' 
+    };
+  }
+  
+  // Update session key for this student
+  const sessionKey = Session.getTemporaryActiveUserKey();
+  existingStudent.sessionKey = sessionKey;
+  
+  saveGameStateToProperties_();
+  
+  Logger.log(`Student identity confirmed: ${cleanFirstName} ${cleanLastName} as ${cleanNickname}`);
+  
+  return {
+    success: true,
+    message: `Welcome back, ${cleanNickname}!`,
+    student: {
+      firstName: existingStudent.firstName,
+      lastName: existingStudent.lastName,
+      nickname: existingStudent.nickname
+    }
+  };
+}
 
 // --- Web App Callable Functions ---
 function getGameData() {
@@ -399,20 +691,17 @@ function getGameData() {
     if (gameState.status === 'voting' && gameState.activeMatchup && gameState.activeMatchup.votingEndTime && Date.now() >= gameState.activeMatchup.votingEndTime) {
         Logger.log(`Automatic advancement: Voting time expired for matchup ${gameState.activeMatchup.promptA.text} vs ${gameState.activeMatchup.promptB.text}.`);
         
-        gameState.status = 'round_over_pending_auto_advance'; // Temporary status
-        determineWinnerAndAdvance_(); // This sets gameState.status to 'round_over'
+        gameState.status = 'round_over_pending_auto_advance';
+        determineWinnerAndAdvance_();
 
-        // Now, attempt to prepare the next state (next matchup or next round)
         if (gameState.status === 'game_over') { 
             Logger.log('Auto-advanced: Game is over.');
         } else {
-            // gameState.status is 'round_over'
             const success = prepareNextMatchup_(); 
             if (success) {
                 gameState.status = 'voting'; 
                 Logger.log(`Auto-advanced: Round ${gameState.currentRound + 1}, Matchup ${gameState.currentMatchupIndex + 1} launched after timer.`);
             } else {
-                // No more matchups in current round, or couldn't prepare one.
                 if (gameState.bracket[gameState.currentRound] && gameState.bracket[gameState.currentRound].every(m => m.winner)) {
                     if (gameState.bracket[gameState.currentRound].length === 1 && gameState.bracket[gameState.currentRound][0].winner) {
                         gameState.status = 'game_over';
@@ -435,29 +724,28 @@ function getGameData() {
                                     Logger.log('Auto-advanced: Game Over! No more matchups to prepare.');
                                 } else {
                                     Logger.log('Auto-advanced: Could not prepare next matchup after advancing round. Game might be stuck or over.');
-                                    gameState.status = 'round_over'; // Revert to round_over if stuck, teacher might need to intervene
+                                    gameState.status = 'round_over';
                                 }
                             }
                         }
                     }
                 } else {
                      Logger.log('Auto-advanced: Could not prepare next matchup. Current round may not be complete or an error occurred. Status set to round_over.');
-                     gameState.status = 'round_over'; // Revert to round_over, teacher might need to intervene
+                     gameState.status = 'round_over';
                 }
             }
         }
-        saveGameStateToProperties_(); // Save the new state after auto-advancement
+        saveGameStateToProperties_();
     }
   
   let activeMatchupClient = null;
   if (gameState.activeMatchup) {
-      const userKey = Session.getTemporaryActiveUserKey();
-      const votersList = gameState.activeMatchup.voters || [];
-      const currentUserHasVoted = votersList.includes(userKey);
+      const sessionKey = Session.getTemporaryActiveUserKey();
+      const student = gameState.students.find(s => s.sessionKey === sessionKey);
+      const currentUserHasVoted = student ? gameState.activeMatchup.voters.includes(student.nickname) : false;
       
       activeMatchupClient = {
           ...gameState.activeMatchup,
-          // voters: votersList, // Client might not need the full list for display
           currentUserHasVoted: currentUserHasVoted,
           votingStartTime: gameState.activeMatchup.votingStartTime || null,
           votingEndTime: gameState.activeMatchup.votingEndTime || null 
@@ -469,7 +757,12 @@ function getGameData() {
     activeMatchup: activeMatchupClient, 
     bracket: gameState.bracket, 
     currentRound: gameState.currentRound,
-    currentMatchupIndex: gameState.currentMatchupIndex 
+    currentMatchupIndex: gameState.currentMatchupIndex,
+    students: gameState.students.map(s => ({ 
+      firstName: s.firstName, 
+      lastName: s.lastName, 
+      nickname: s.nickname 
+    }))
   };
 }
 
@@ -480,22 +773,36 @@ function submitVote(voteData) {
     return { success: false, message: 'Voting is not currently active or no matchup is live.' };
   }
 
-  // Check if voting time has expired on the server
   if (gameState.activeMatchup.votingEndTime && Date.now() >= gameState.activeMatchup.votingEndTime) {
-      Logger.log(`Vote submitted by ${Session.getTemporaryActiveUserKey()} after voting period ended for ${gameState.activeMatchup.codeA} vs ${gameState.activeMatchup.codeB}.`);
+      Logger.log(`Vote submitted after voting period ended for ${gameState.activeMatchup.codeA} vs ${gameState.activeMatchup.codeB}.`);
       return { 
           success: false, 
           message: "Time's up! Voting for this matchup has ended.",
-          alreadyVoted: false, // Not 'alreadyVoted', but 'timeUp'
-          updatedMatchup: { // Return current state so UI can still update vote counts if needed
+          updatedMatchup: {
             ...gameState.activeMatchup,
-            currentUserHasVoted: (gameState.activeMatchup.voters || []).includes(Session.getTemporaryActiveUserKey())
+            currentUserHasVoted: false
           }
       };
   }
 
-  const userKey = Session.getTemporaryActiveUserKey();
-  const { code } = voteData;
+  const { code, studentNickname } = voteData;
+  
+  if (!studentNickname) {
+    return { success: false, message: 'Student nickname is required to vote.' };
+  }
+  
+  // Verify student is registered
+  const student = gameState.students.find(s => s.nickname === studentNickname);
+  if (!student) {
+    return { success: false, message: 'Student not found. Please re-register.' };
+  }
+  
+  // Verify session key matches
+  const sessionKey = Session.getTemporaryActiveUserKey();
+  if (student.sessionKey !== sessionKey) {
+    return { success: false, message: 'Session mismatch. Please re-register.' };
+  }
+  
   let voteRegistered = false;
   
   const currentMatchupInBracket = gameState.bracket[gameState.activeMatchup.round][gameState.activeMatchup.matchupIndexInRound];
@@ -509,8 +816,8 @@ function submitVote(voteData) {
   if (!gameState.activeMatchup.voters) gameState.activeMatchup.voters = [];
   
 
-  if (currentMatchupInBracket.voters.includes(userKey)) {
-      Logger.log(`User ${userKey} has already voted in this matchup.`);
+  if (currentMatchupInBracket.voters.includes(studentNickname)) {
+      Logger.log(`Student ${studentNickname} has already voted in this matchup.`);
       return { 
           success: false, message: 'You have already voted in this matchup.',
           alreadyVoted: true, 
@@ -521,22 +828,30 @@ function submitVote(voteData) {
       };
   }
   
+  let votedForPrompt = '';
+  
   if (code === gameState.activeMatchup.codeA) {
     gameState.activeMatchup.votesA++;
     currentMatchupInBracket.votesA = gameState.activeMatchup.votesA;
+    votedForPrompt = gameState.activeMatchup.promptA.text;
     voteRegistered = true;
   } else if (code === gameState.activeMatchup.codeB) {
     gameState.activeMatchup.votesB++;
     currentMatchupInBracket.votesB = gameState.activeMatchup.votesB;
+    votedForPrompt = gameState.activeMatchup.promptB.text;
     voteRegistered = true;
   }
 
   if (voteRegistered) {
-    currentMatchupInBracket.voters.push(userKey);
+    currentMatchupInBracket.voters.push(studentNickname);
     if (!gameState.activeMatchup.voters) gameState.activeMatchup.voters = []; 
-    gameState.activeMatchup.voters.push(userKey);
+    gameState.activeMatchup.voters.push(studentNickname);
     
-    Logger.log(`Vote registered for ${code} by ${userKey}. Voters: ${currentMatchupInBracket.voters.length}. Votes: A:${gameState.activeMatchup.votesA}, B:${gameState.activeMatchup.votesB}`);
+    // Record vote in sheet
+    const roundNumber = gameState.activeMatchup.round + 1;
+    recordVoteInSheet_(studentNickname, roundNumber, votedForPrompt);
+    
+    Logger.log(`Vote registered for ${code} by ${studentNickname}. Voters: ${currentMatchupInBracket.voters.length}. Votes: A:${gameState.activeMatchup.votesA}, B:${gameState.activeMatchup.votesB}`);
     saveGameStateToProperties_();
     return {
       success: true, message: 'Vote registered!',
@@ -550,7 +865,7 @@ function submitVote(voteData) {
         success: false, message: 'Invalid prompt code.',
         updatedMatchup: { 
             ...gameState.activeMatchup,
-            currentUserHasVoted: gameState.activeMatchup.voters ? gameState.activeMatchup.voters.includes(userKey) : false
+            currentUserHasVoted: gameState.activeMatchup.voters ? gameState.activeMatchup.voters.includes(studentNickname) : false
         }
     };
   }
@@ -567,7 +882,6 @@ function loadPromptsFromSheet_() {
     }
     if (!ss) {
         Logger.log('Could not get spreadsheet instance.');
-        // Avoid UI alert here
         gameState.prompts = [];
         return;
     }
@@ -576,7 +890,6 @@ function loadPromptsFromSheet_() {
     if (!sheet) {
       Logger.log(`Sheet "${PROMPTS_SHEET_NAME}" not found in spreadsheet ID: ${ss.getId()}.`);
       gameState.prompts = []; 
-      // Avoid UI alert here
       return;
     }
     
@@ -607,7 +920,6 @@ function loadPromptsFromSheet_() {
 
   } catch (e) {
     Logger.log(`Error loading prompts from sheet: ${e.toString()}\nStack: ${e.stack}`);
-    // Avoid UI alert here
     gameState.prompts = []; 
   }
 }
