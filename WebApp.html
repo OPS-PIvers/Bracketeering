@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prompt Bracket Battle</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
+
+    :root {
+      --primary-color: #6a11cb; /* Purple */
+      --secondary-color: #2575fc; /* Blue */
+      --accent-color: #ffde00; /* Yellow for highlights */
+      --bg-color: #f0f2f5; /* Light grey background */
+      --text-color: #333;
+      --card-bg: #ffffff;
+      --winner-glow: 0 0 25px var(--accent-color);
+      --loser-opacity: 0.5;
+      --timer-color: var(--accent-color);
+    }
+
+    body {
+      font-family: 'Poppins', sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      text-align: center;
+      overflow-x: hidden;
+    }
+
+    .container {
+      background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+      padding: 30px;
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+      width: 100%;
+      max-width: 900px; /* Max width for the game area */
+      min-height: 500px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden; /* For confetti */
+    }
+
+    .view {
+      display: none; /* Hidden by default */
+      width: 100%;
+      animation: fadeIn 0.7s ease-in-out;
+    }
+    .view.active {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+      100% { transform: scale(1); }
+    }
+    @keyframes slideInLeft {
+        from { opacity: 0; transform: translateX(-100px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes slideInRight {
+        from { opacity: 0; transform: translateX(100px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes popIn {
+        0% { opacity: 0; transform: scale(0.5); }
+        100% { opacity: 1; transform: scale(1); }
+    }
+    @keyframes winnerShine {
+        0% { box-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px var(--accent-color), 0 0 20px var(--accent-color); }
+        50% { box-shadow: 0 0 15px #fff, 0 0 25px #fff, 0 0 35px var(--accent-color), 0 0 45px var(--accent-color); }
+        100% { box-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px var(--accent-color), 0 0 20px var(--accent-color); }
+    }
+
+
+    h1, h2 {
+      color: white;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+    }
+    h1 { font-size: 2.5em; margin-bottom: 10px; animation: popIn 0.5s ease-out; }
+    h2 { font-size: 1.8em; margin-bottom: 20px; }
+
+    /* Waiting Room */
+    #waiting-room p {
+      font-size: 1.5em;
+      color: white;
+      animation: pulse 2s infinite;
+    }
+
+    /* Voting View */
+     #voting-timer-container {
+        margin-bottom: 15px;
+        text-align: center;
+        height: 60px; /* Reserve space for timer */
+    }
+    #voting-countdown-svg {
+        transform: rotate(-90deg); /* Start from top */
+    }
+    #voting-countdown-text {
+        transform: rotate(90deg); /* Counter-rotate text */
+        transform-origin: 18px 18px; /* SVG center for text rotation */
+        font-weight: bold;
+    }
+    #voting-time-up-message {
+        color: var(--accent-color);
+        font-weight: bold;
+        font-size: 1.2em;
+    }
+
+
+    #voting-view .prompts-container {
+      display: flex;
+      justify-content: space-around;
+      align-items: flex-start; /* Align items to the top */
+      width: 100%;
+      margin-bottom: 30px;
+      gap: 20px; /* Space between prompt cards */
+    }
+
+    .prompt-card {
+      background-color: var(--card-bg);
+      padding: 25px;
+      border-radius: 15px;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+      width: 45%; /* Each card takes up roughly half */
+      min-height: 200px; /* Ensure cards have some height */
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between; /* Pushes button to bottom */
+      transition: transform 0.3s ease, box-shadow 0.3s ease, opacity 0.5s ease;
+      position: relative; /* For winner banner positioning */
+    }
+    .prompt-card.slide-in-left { animation: slideInLeft 0.6s forwards; }
+    .prompt-card.slide-in-right { animation: slideInRight 0.6s forwards; }
+
+    .prompt-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+    }
+    .prompt-card h3 {
+      font-size: 1.6em;
+      margin-top: 0;
+      margin-bottom: 15px;
+      color: var(--primary-color);
+      word-wrap: break-word; 
+      overflow-wrap: break-word;
+    }
+    .prompt-card .vote-code {
+      font-size: 0.9em;
+      color: #777;
+      margin-bottom: 15px;
+    }
+
+    .vote-button {
+      background: linear-gradient(to right, var(--accent-color), #f0c300);
+      color: var(--text-color);
+      border: none;
+      padding: 12px 25px;
+      border-radius: 25px;
+      font-size: 1.1em;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    .vote-button:hover:not(:disabled) {
+      transform: scale(1.05);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+    .vote-button:active:not(:disabled) {
+      transform: scale(0.98);
+    }
+    .vote-button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+        box-shadow: none;
+        transform: none;
+    }
+
+
+    .progress-bar-container {
+      width: 100%;
+      background-color: #e0e0e0;
+      border-radius: 10px;
+      margin-top: 10px;
+      height: 25px;
+      overflow: hidden; 
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0%; 
+      background: linear-gradient(to right, var(--secondary-color), var(--primary-color));
+      border-radius: 10px;
+      transition: width 0.5s ease-in-out;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 0.9em;
+    }
+    .vote-count {
+        font-size: 1em;
+        font-weight: bold;
+        color: var(--text-color); 
+        margin-top: 5px;
+    }
+
+    .prompt-card.winner {
+      animation: winnerShine 1.5s ease-in-out infinite;
+      border: 3px solid var(--accent-color);
+    }
+    .prompt-card.loser {
+      opacity: var(--loser-opacity);
+      transform: scale(0.95);
+    }
+    .winner-banner {
+        position: absolute;
+        top: 10px; /* Adjusted for better placement within card */
+        left: 50%;
+        transform: translateX(-50%) rotate(-5deg);
+        background-color: var(--accent-color);
+        color: var(--primary-color);
+        padding: 5px 15px; /* Slightly smaller banner */
+        font-size: 1.2em; /* Adjusted font size */
+        font-weight: bold;
+        border-radius: 5px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        z-index: 10;
+        animation: popIn 0.5s ease-out;
+    }
+
+
+    /* Bracket View */
+    #bracket-view {
+      color: white;
+      width: 100%;
+      overflow-x: auto; 
+    }
+    .bracket-container {
+      display: flex;
+      justify-content: flex-start; 
+      align-items: center; 
+      padding: 20px;
+      gap: 50px; 
+      min-height: 300px; 
+    }
+    .round {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-around; 
+      gap: 30px; 
+      min-width: 180px; 
+    }
+    .matchup {
+      background-color: rgba(255, 255, 255, 0.1);
+      padding: 10px;
+      border-radius: 8px;
+      position: relative; 
+      transition: transform 0.3s ease-out, box-shadow 0.3s ease-out;
+    }
+    .matchup.highlight-next-matchup {
+        transform: scale(1.05);
+        box-shadow: 0 0 20px var(--accent-color), 0 0 30px var(--secondary-color);
+        border: 2px solid var(--accent-color);
+    }
+    .matchup-item {
+      background-color: rgba(255, 255, 255, 0.2);
+      padding: 8px;
+      border-radius: 5px;
+      margin-bottom: 5px; 
+      font-size: 0.9em;
+      text-align: left;
+      min-height: 20px; 
+      word-break: break-word;
+    }
+    .matchup-item.winner-in-bracket {
+      font-weight: bold;
+      color: var(--accent-color);
+    }
+    .matchup-item.advancing { 
+        animation: popIn 0.5s ease-out;
+    }
+    .connector-lines { 
+    }
+     #pre-voting-countdown-display {
+        font-size: 1.5em;
+        color: var(--accent-color);
+        font-weight: bold;
+        margin-top: 20px;
+        padding: 10px;
+        background-color: rgba(0,0,0,0.3);
+        border-radius: 10px;
+    }
+
+    /* Game Over View */
+    #game-over-view .final-winner {
+      font-size: 2.5em;
+      color: var(--accent-color);
+      margin-bottom: 20px;
+      animation: popIn 1s ease-out, pulse 2s infinite 1s;
+    }
+    #game-over-view button {
+      background: var(--accent-color); color: var(--primary-color);
+      border: none; padding: 12px 25px; border-radius: 25px; font-size: 1.1em;
+      font-weight: 600; cursor: pointer; transition: transform 0.2s ease;
+    }
+    #game-over-view button:hover { transform: scale(1.05); }
+
+    /* Loading Indicator */
+    .loader {
+      border: 5px solid #f3f3f3;
+      border-top: 5px solid var(--secondary-color);
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* Confetti */
+    .confetti {
+        position: absolute;
+        width: 10px;
+        height: 10px;
+        background-color: #f00; /* Default color */
+        opacity: 0.7;
+        border-radius: 50%;
+        animation: fall 3s linear forwards;
+    }
+    @keyframes fall {
+        to {
+            transform: translateY(120vh) rotate(720deg);
+            opacity: 0;
+        }
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      body { padding: 10px; }
+      .container { padding: 20px; }
+      h1 { font-size: 2em; }
+      h2 { font-size: 1.5em; }
+      #voting-view .prompts-container {
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+      }
+      .prompt-card {
+        width: 90%;
+        min-height: 150px;
+      }
+      .prompt-card h3 { font-size: 1.3em; }
+      .vote-button { padding: 10px 20px; font-size: 1em; }
+      .bracket-container { flex-direction: column; gap: 20px; align-items: stretch; }
+      .round { gap: 15px; min-width: unset; width: 100%; }
+      #voting-timer-container { height: 50px; }
+      #voting-countdown-svg { width: 80px; height: 80px;}
+    }
+
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="loader" class="loader" style="display: none;"></div>
+    <div id="message-area" style="color: white; margin-bottom: 10px; min-height: 20px;"></div>
+
+    <div id="waiting-room" class="view">
+      <h1>Prompt Bracket Battle</h1>
+      <p>Waiting for the game to start...</p>
+      <p style="font-size: 0.8em; color: #ddd;">Your teacher will launch the prompts soon!</p>
+    </div>
+
+    <div id="voting-view" class="view">
+      <h2 id="round-title">Round X, Matchup Y</h2>
+       <div id="voting-timer-container">
+            <svg id="voting-countdown-svg" width="80" height="80" viewBox="0 0 36 36">
+                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                      fill="none" stroke="#ffffff33" stroke-width="3.5"/>
+                <path id="voting-countdown-path"
+                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                      fill="none" stroke="var(--timer-color)" stroke-width="3.5"
+                      stroke-dasharray="100, 100" stroke-dashoffset="0" stroke-linecap="round"/>
+                <text id="voting-countdown-text" x="18" y="20.35" text-anchor="middle" font-size="0.5em" fill="white">20s</text>
+            </svg>
+            <div id="voting-time-up-message" style="display:none;">Time's up! Waiting for results...</div>
+        </div>
+      <div class="prompts-container">
+        <div id="promptA-card" class="prompt-card">
+          <h3 id="promptA-text">Prompt A Text</h3>
+          <p class="vote-code">Code: <span id="promptA-code">CODEA</span></p>
+          <div class="progress-bar-container">
+            <div id="promptA-progress" class="progress-bar">0%</div>
+          </div>
+          <p class="vote-count">Votes: <span id="promptA-votes">0</span></p>
+          <button id="voteA-button" class="vote-button">Vote for this!</button>
+        </div>
+        <div id="promptB-card" class="prompt-card">
+          <h3 id="promptB-text">Prompt B Text</h3>
+          <p class="vote-code">Code: <span id="promptB-code">CODEB</span></p>
+          <div class="progress-bar-container">
+            <div id="promptB-progress" class="progress-bar">0%</div>
+          </div>
+          <p class="vote-count">Votes: <span id="promptB-votes">0</span></p>
+          <button id="voteB-button" class="vote-button">Vote for this!</button>
+        </div>
+      </div>
+      <p id="voted-message" style="font-size: 0.9em; color: #eee; display: none;">You have already voted in this matchup.</p>
+      <p id="voting-instructions" style="font-size: 0.9em; color: #eee;">Click a button to cast your vote!</p>
+    </div>
+
+    <div id="bracket-view" class="view">
+      <h2>Game Bracket</h2>
+      <div id="pre-voting-countdown-display" style="display:none;"></div>
+      <div id="bracket-container" class="bracket-container">
+        </div>
+      <button id="refresh-bracket-button" style="margin-top: 20px; display:none;" class="vote-button">Refresh Bracket</button>
+    </div>
+
+    <div id="game-over-view" class="view">
+      <h1>Game Over!</h1>
+      <p class="final-winner">Winner: <span id="final-winner-text"></span></p>
+      <p style="color: white;">Congratulations to the winning prompt!</p>
+      <div id="final-bracket-display">
+          <h2>Final Bracket</h2>
+          <div id="final-bracket-container" class="bracket-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const loader = document.getElementById('loader');
+    const messageArea = document.getElementById('message-area');
+    const views = {
+      waiting: document.getElementById('waiting-room'),
+      voting: document.getElementById('voting-view'),
+      bracket: document.getElementById('bracket-view'),
+      gameOver: document.getElementById('game-over-view')
+    };
+    let currentGameState = {};
+    let pollInterval;
+    
+    let lastDisplayedVotingMatchupId = null; 
+    let activeVotingMatchupDetails = null; 
+
+    const VOTING_DURATION_SECONDS = 20;
+    const PRE_VOTING_COUNTDOWN_SECONDS = 5; 
+    const SHOW_WINNER_DURATION_MS = 4000; 
+
+    let votingCountdownInterval = null;
+    let votingTimeRemaining = VOTING_DURATION_SECONDS;
+    let preVotingCountdownInterval = null;
+    let preVotingTimeRemaining = PRE_VOTING_COUNTDOWN_SECONDS;
+    let transitionToBracketTimeout = null;
+
+    const votingCountdownSVG = document.getElementById('voting-countdown-svg');
+    const votingCountdownPath = document.getElementById('voting-countdown-path');
+    const votingCountdownText = document.getElementById('voting-countdown-text');
+    const votingTimeUpMessage = document.getElementById('voting-time-up-message');
+    const preVotingCountdownDisplay = document.getElementById('pre-voting-countdown-display');
+
+
+    // --- UI Update Functions ---
+    function showView(viewName) {
+      Object.values(views).forEach(view => view.classList.remove('active'));
+      if (views[viewName]) {
+        views[viewName].classList.add('active');
+      }
+      if (viewName === 'voting') {
+          document.getElementById('promptA-card').classList.remove('winner', 'loser', 'slide-in-left', 'slide-in-right');
+          document.getElementById('promptB-card').classList.remove('winner', 'loser', 'slide-in-left', 'slide-in-right');
+          document.querySelectorAll('.winner-banner').forEach(banner => banner.remove());
+          // Timer display is handled by updateVotingView based on state
+      } else if (viewName === 'bracket') {
+          preVotingCountdownDisplay.style.display = 'none'; 
+      }
+      if (messageArea.dataset.persistent !== 'true') {
+        showMessage('', 'clear');
+      }
+    }
+
+    function showLoader(show) {
+      loader.style.display = show ? 'block' : 'none';
+    }
+
+    function showMessage(text, type = 'info', persistent = false) {
+        messageArea.textContent = text;
+        messageArea.style.color = type === 'error' ? 'lightcoral' : (type === 'success' ? 'lightgreen' : 'white');
+        messageArea.dataset.persistent = persistent ? 'true' : 'false';
+        if (text && !persistent) {
+            setTimeout(() => {
+                if (messageArea.textContent === text && messageArea.dataset.persistent !== 'true') {
+                    messageArea.textContent = '';
+                }
+            }, 5000);
+        } else if (!text) {
+            messageArea.textContent = '';
+             messageArea.dataset.persistent = 'false';
+        }
+    }
+
+    // --- Countdown Timer Functions ---
+    function startVotingCountdown(startTime, endTime) {
+        stopVotingCountdown(); 
+        
+        const now = Date.now();
+        const totalDuration = (endTime - startTime) / 1000; // Total duration from server
+        votingTimeRemaining = Math.max(0, Math.round((endTime - now) / 1000)); // Remaining time based on server end time
+
+        if (votingTimeRemaining <= 0) { // If time is already up based on server
+            handleVotingTimeUp();
+            return;
+        }
+
+        votingCountdownSVG.style.display = 'block';
+        votingTimeUpMessage.style.display = 'none';
+        updateVotingTimerDisplay(totalDuration); // Pass total duration for progress calculation
+
+        document.getElementById('voteA-button').disabled = currentGameState.activeMatchup?.currentUserHasVoted || false;
+        document.getElementById('voteB-button').disabled = currentGameState.activeMatchup?.currentUserHasVoted || false;
+
+        votingCountdownInterval = setInterval(() => {
+            votingTimeRemaining--;
+            updateVotingTimerDisplay(totalDuration);
+            if (votingTimeRemaining <= 0) {
+                handleVotingTimeUp();
+            }
+        }, 1000);
+    }
+
+    function stopVotingCountdown() {
+        clearInterval(votingCountdownInterval);
+        votingCountdownInterval = null;
+    }
+
+    function updateVotingTimerDisplay(totalDuration = VOTING_DURATION_SECONDS) {
+        // Calculate progress based on the initial total duration and current remaining time
+        const elapsed = totalDuration - votingTimeRemaining;
+        const progress = totalDuration > 0 ? (elapsed / totalDuration) * 100 : 0;
+        
+        votingCountdownPath.style.strokeDashoffset = 100 - Math.min(100, Math.max(0, progress)); // Cap progress at 0-100
+        votingCountdownText.textContent = `${Math.max(0, votingTimeRemaining)}s`;
+    }
+
+
+    function handleVotingTimeUp() {
+        stopVotingCountdown();
+        votingCountdownSVG.style.display = 'none';
+        votingTimeUpMessage.style.display = 'block';
+        document.getElementById('voteA-button').disabled = true;
+        document.getElementById('voteB-button').disabled = true;
+        showMessage("Time's up! Waiting for results...", 'info', true);
+        // Server will handle actual advancement via polling in getGameData
+    }
+
+    function startPreVotingCountdown(matchupForNextVote) {
+        stopPreVotingCountdown();
+        preVotingTimeRemaining = PRE_VOTING_COUNTDOWN_SECONDS;
+        preVotingCountdownDisplay.style.display = 'block';
+        updatePreVotingTimerDisplay();
+
+        preVotingCountdownInterval = setInterval(() => {
+            preVotingTimeRemaining--;
+            updatePreVotingTimerDisplay();
+            if (preVotingTimeRemaining <= 0) {
+                stopPreVotingCountdown();
+                preVotingCountdownDisplay.style.display = 'none';
+                showMessage('', 'clear'); 
+                
+                activeVotingMatchupDetails = matchupForNextVote; 
+                lastDisplayedVotingMatchupId = activeVotingMatchupDetails.promptA.id + "_" + activeVotingMatchupDetails.promptB.id;
+
+                updateVotingView(activeVotingMatchupDetails);
+                showView('voting');
+                // Start voting countdown using server-provided times if available
+                if (activeVotingMatchupDetails.votingStartTime && activeVotingMatchupDetails.votingEndTime) {
+                     startVotingCountdown(activeVotingMatchupDetails.votingStartTime, activeVotingMatchupDetails.votingEndTime);
+                }
+            }
+        }, 1000);
+    }
+
+    function stopPreVotingCountdown() {
+        clearInterval(preVotingCountdownInterval);
+        preVotingCountdownInterval = null;
+        preVotingCountdownDisplay.style.display = 'none';
+    }
+    
+    function updatePreVotingTimerDisplay() {
+        preVotingCountdownDisplay.textContent = `Next matchup starts in: ${preVotingTimeRemaining}s`;
+    }
+
+
+    function updateVotingView(matchup) {
+      if (!matchup) {
+        console.warn("No active matchup to display for voting.");
+        return;
+      }
+      
+      activeVotingMatchupDetails = matchup; 
+
+      document.getElementById('round-title').textContent = `Round ${matchup.round + 1}, Matchup ${matchup.matchupIndexInRound + 1}`;
+      
+      const promptACard = document.getElementById('promptA-card');
+      const promptBCard = document.getElementById('promptB-card');
+      const voteAButton = document.getElementById('voteA-button');
+      const voteBButton = document.getElementById('voteB-button');
+      const votedMessageEl = document.getElementById('voted-message');
+      const votingInstructionsEl = document.getElementById('voting-instructions');
+
+      promptACard.classList.remove('winner', 'loser');
+      promptBCard.classList.remove('winner', 'loser');
+      promptACard.querySelectorAll('.winner-banner').forEach(b => b.remove());
+      promptBCard.querySelectorAll('.winner-banner').forEach(b => b.remove());
+
+      document.getElementById('promptA-text').textContent = matchup.promptA.text;
+      document.getElementById('promptA-code').textContent = matchup.codeA;
+      document.getElementById('promptA-votes').textContent = matchup.votesA;
+      voteAButton.onclick = () => handleVote(matchup.codeA);
+
+      document.getElementById('promptB-text').textContent = matchup.promptB.text;
+      document.getElementById('promptB-code').textContent = matchup.codeB;
+      document.getElementById('promptB-votes').textContent = matchup.votesB;
+      voteBButton.onclick = () => handleVote(matchup.codeB);
+
+      updateProgressBars(matchup.votesA, matchup.votesB);
+      
+      const isRoundOver = currentGameState.status === 'round_over' || currentGameState.status === 'round_over_pending_auto_advance';
+      const clientTimerExpired = votingTimeRemaining <= 0 && votingCountdownInterval !== null; // Check if client timer ran out
+
+      if (matchup.currentUserHasVoted) {
+          voteAButton.disabled = true;
+          voteBButton.disabled = true;
+          votedMessageEl.style.display = 'block';
+          votingInstructionsEl.style.display = 'none';
+          // Timer continues unless round is over or client timer expired
+          if (isRoundOver || clientTimerExpired) {
+              stopVotingCountdown();
+              votingCountdownSVG.style.display = 'none';
+              votingTimeUpMessage.style.display = clientTimerExpired && !isRoundOver ? 'block' : 'none';
+          } else {
+              votingCountdownSVG.style.display = 'block'; // Ensure timer is visible if still running
+              votingTimeUpMessage.style.display = 'none';
+          }
+      } else if (isRoundOver || clientTimerExpired) {
+          voteAButton.disabled = true;
+          voteBButton.disabled = true;
+          votedMessageEl.style.display = 'none';
+          votingInstructionsEl.textContent = 'Voting for this matchup has ended.';
+          votingInstructionsEl.style.display = 'block';
+          stopVotingCountdown(); // Stop if server says round_over or client timer expired
+          votingCountdownSVG.style.display = 'none';
+          votingTimeUpMessage.style.display = clientTimerExpired && !isRoundOver ? 'block' : 'none';
+      } else { // Active voting, user hasn't voted, round not over, client timer not expired
+          voteAButton.disabled = false;
+          voteBButton.disabled = false;
+          votedMessageEl.style.display = 'none';
+          votingInstructionsEl.textContent = 'Click a button to cast your vote!';
+          votingInstructionsEl.style.display = 'block';
+          votingCountdownSVG.style.display = 'block';
+          votingTimeUpMessage.style.display = 'none';
+           // If countdown isn't running for this matchup, start it using server times
+          if (!votingCountdownInterval && matchup.votingStartTime && matchup.votingEndTime) {
+             startVotingCountdown(matchup.votingStartTime, matchup.votingEndTime);
+          }
+      }
+
+      if (isRoundOver && currentGameState.bracket[matchup.round] && currentGameState.bracket[matchup.round][matchup.matchupIndexInRound]) {
+          const bracketMatchup = currentGameState.bracket[matchup.round][matchup.matchupIndexInRound];
+          if (bracketMatchup.winner) {
+              highlightWinnerLoser(bracketMatchup.winner.id === matchup.promptA.id ? 'A' : 'B');
+          }
+      }
+    }
+
+    function updateProgressBars(votesA, votesB) {
+      const totalVotes = votesA + votesB;
+      const progressA = totalVotes > 0 ? (votesA / totalVotes) * 100 : 0;
+      const progressB = totalVotes > 0 ? (votesB / totalVotes) * 100 : 0;
+
+      document.getElementById('promptA-progress').style.width = `${progressA}%`;
+      document.getElementById('promptA-progress').textContent = `${Math.round(progressA)}%`;
+      document.getElementById('promptA-votes').textContent = votesA;
+
+      document.getElementById('promptB-progress').style.width = `${progressB}%`;
+      document.getElementById('promptB-progress').textContent = `${Math.round(progressB)}%`;
+      document.getElementById('promptB-votes').textContent = votesB;
+    }
+
+    function highlightWinnerLoser(winnerPromptCode) { 
+        const promptACard = document.getElementById('promptA-card');
+        const promptBCard = document.getElementById('promptB-card');
+        document.getElementById('voteA-button').disabled = true;
+        document.getElementById('voteB-button').disabled = true;
+
+        let winnerCard = (winnerPromptCode === 'A') ? promptACard : promptBCard;
+        let loserCard = (winnerPromptCode === 'A') ? promptBCard : promptACard;
+
+        winnerCard.querySelectorAll('.winner-banner').forEach(b => b.remove());
+        loserCard.querySelectorAll('.winner-banner').forEach(b => b.remove());
+
+        winnerCard.classList.add('winner'); winnerCard.classList.remove('loser');
+        loserCard.classList.add('loser'); loserCard.classList.remove('winner');
+
+        const banner = document.createElement('div');
+        banner.className = 'winner-banner'; banner.textContent = 'WINNER!';
+        winnerCard.appendChild(banner);
+        
+        createConfettiEffect(winnerCard);
+        document.getElementById('voted-message').style.display = 'none';
+        document.getElementById('voting-instructions').textContent = 'Winner declared! Waiting for next round.';
+        stopVotingCountdown(); 
+        votingCountdownSVG.style.display = 'none';
+        votingTimeUpMessage.style.display = 'none';
+    }
+
+    function renderBracket(bracketData, targetContainerId = 'bracket-container') {
+      const container = document.getElementById(targetContainerId);
+      container.innerHTML = ''; 
+      if (!bracketData || bracketData.length === 0) {
+        container.textContent = 'Bracket data is not available yet.'; return;
+      }
+
+      bracketData.forEach((roundMatchups, roundIndex) => {
+        const roundDiv = document.createElement('div');
+        roundDiv.className = 'round';
+        roundDiv.innerHTML = `<h4>Round ${roundIndex + 1}</h4>`;
+
+        roundMatchups.forEach((matchup, matchupIndex) => {
+          const matchupDiv = document.createElement('div');
+          matchupDiv.className = 'matchup';
+          matchupDiv.id = `matchup-r${roundIndex}-m${matchupIndex}`;
+          
+          const promptADiv = document.createElement('div');
+          promptADiv.className = 'matchup-item';
+          promptADiv.textContent = matchup.promptA ? matchup.promptA.text : 'TBD';
+          if (matchup.winner && matchup.promptA && matchup.winner.id === matchup.promptA.id) {
+            promptADiv.classList.add('winner-in-bracket', 'advancing');
+          }
+
+          const promptBDiv = document.createElement('div');
+          promptBDiv.className = 'matchup-item';
+          promptBDiv.textContent = matchup.promptB ? (matchup.promptB.id === 'BYE_ID' ? 'BYE (Auto-Win)' : matchup.promptB.text) : 'TBD';
+           if (matchup.winner && matchup.promptB && matchup.winner.id === matchup.promptB.id) {
+            promptBDiv.classList.add('winner-in-bracket', 'advancing');
+          }
+          
+          matchupDiv.appendChild(promptADiv);
+          matchupDiv.appendChild(promptBDiv);
+          roundDiv.appendChild(matchupDiv);
+        });
+        container.appendChild(roundDiv);
+      });
+    }
+    
+    function highlightActiveMatchupInBracket(activeMatchupData) {
+        document.querySelectorAll('.matchup.highlight-next-matchup').forEach(el => el.classList.remove('highlight-next-matchup'));
+        if (activeMatchupData) {
+            const matchupId = `matchup-r${activeMatchupData.round}-m${activeMatchupData.matchupIndexInRound}`;
+            const matchupElement = document.getElementById(matchupId);
+            if (matchupElement) {
+                matchupElement.classList.add('highlight-next-matchup');
+                matchupElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+    }
+
+
+    function displayGameOver() {
+        const winner = findFinalWinner(currentGameState.bracket);
+        document.getElementById('final-winner-text').textContent = winner ? winner.text : "It's a tie or error!";
+        if(winner) createConfettiEffect(views.gameOver, 100); 
+        renderBracket(currentGameState.bracket, 'final-bracket-container'); 
+        showView('gameOver');
+        stopVotingCountdown(); stopPreVotingCountdown(); 
+    }
+    
+    function findFinalWinner(bracket) {
+        if (!bracket || bracket.length === 0) return null;
+        const lastRound = bracket[bracket.length - 1];
+        if (!lastRound || lastRound.length === 0) return null;
+        if (lastRound.length === 1 && lastRound[0].winner) return lastRound[0].winner;
+        return null; 
+    }
+
+    function createConfettiEffect(parentElement, count = 50) {
+        const colors = ['#ff4e4e', '#4eff5a', '#4e94ff', '#f7ff4e', '#ff4ef7', '#4efff7'];
+        const containerForConfetti = document.querySelector('.container'); 
+        for (let i = 0; i < count; i++) {
+            const confetti = document.createElement('div');
+            confetti.className = 'confetti';
+            confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+            const containerRect = containerForConfetti.getBoundingClientRect();
+            confetti.style.left = Math.random() * containerRect.width + 'px';
+            confetti.style.top = (Math.random() * -50 - 20) + 'px'; 
+            confetti.style.animationDelay = Math.random() * 0.5 + 's'; 
+            confetti.style.transform = `rotate(${Math.random() * 360}deg) scale(${Math.random() * 0.5 + 0.5})`;
+            containerForConfetti.appendChild(confetti);
+            setTimeout(() => confetti.remove(), 3000); 
+        }
+    }
+
+    // --- Server Communication ---
+    function fetchGameData() {
+      google.script.run
+        .withSuccessHandler(data => {
+          const previousStatus = currentGameState.status;
+          const previousActiveMatchupIdForVotingView = activeVotingMatchupDetails ? (activeVotingMatchupDetails.promptA.id + "_" + activeVotingMatchupDetails.promptB.id) : null;
+          
+          currentGameState = data; // Update global state
+          console.log("Game data received:", data);
+
+          if (transitionToBracketTimeout) clearTimeout(transitionToBracketTimeout);
+
+          if (data.status === 'voting' && data.activeMatchup) {
+            const newActiveMatchupIdForVotingView = data.activeMatchup.promptA.id + "_" + data.activeMatchup.promptB.id;
+
+            // Scenario 1: A brand new matchup is launched by teacher (or auto-advanced to a new voting round)
+            // And we are not already in a pre-voting countdown for this *exact* matchup.
+            if (lastDisplayedVotingMatchupId !== newActiveMatchupIdForVotingView && currentGameState.status !== 'voting_pending_pre_countdown') {
+                currentGameState.status = 'voting_pending_pre_countdown'; // Internal client state
+                activeVotingMatchupDetails = data.activeMatchup; 
+
+                renderBracket(data.bracket, 'bracket-container');
+                highlightActiveMatchupInBracket(data.activeMatchup);
+                showView('bracket');
+                showMessage(`Next matchup: ${data.activeMatchup.promptA.text} vs ${data.activeMatchup.promptB.text}`, 'info', true);
+                startPreVotingCountdown(data.activeMatchup); 
+            } 
+            // Scenario 2: We are already in the pre-voting countdown (handled by its interval) or it just finished
+            // OR it's the same matchup (e.g. votes updated, user joined mid-vote)
+            else if (currentGameState.status !== 'voting_pending_pre_countdown') {
+                activeVotingMatchupDetails = data.activeMatchup;
+                lastDisplayedVotingMatchupId = newActiveMatchupIdForVotingView;
+
+                updateVotingView(data.activeMatchup); // This will also handle starting/continuing the timer
+                showView('voting'); 
+            }
+          } else if (data.status === 'round_over' || data.status === 'round_over_pending_auto_advance') {
+            stopVotingCountdown(); 
+            stopPreVotingCountdown(); 
+            
+            const matchupThatEnded = activeVotingMatchupDetails || data.activeMatchup; 
+
+            if (matchupThatEnded && matchupThatEnded.round !== undefined) { 
+                updateVotingView(matchupThatEnded); 
+                showView('voting'); 
+                
+                const bracketForEndedMatchup = data.bracket[matchupThatEnded.round] || (currentGameState.bracket ? currentGameState.bracket[matchupThatEnded.round] : null);
+                if (bracketForEndedMatchup && bracketForEndedMatchup[matchupThatEnded.matchupIndexInRound]) {
+                    const endedBracketEntry = bracketForEndedMatchup[matchupThatEnded.matchupIndexInRound];
+                    if (endedBracketEntry.winner) {
+                         highlightWinnerLoser(endedBracketEntry.winner.id === matchupThatEnded.promptA.id ? 'A' : 'B');
+                    }
+                }
+                
+                // Server will auto-advance, so client doesn't need to force transition to bracket after a short delay.
+                // Client will just wait for the next poll to get the new state (likely 'voting' for next matchup or 'game_over').
+                // We can show a message that it's advancing.
+                showMessage('Advancing to next state...', 'info', true);
+
+            } else { 
+                renderBracket(data.bracket);
+                showView('bracket');
+                showMessage('Round over. Waiting for teacher or auto-advance.', 'info', true);
+            }
+            // lastDisplayedVotingMatchupId = null; // Reset for next matchup; done when new matchup starts
+            // activeVotingMatchupDetails = null; // Reset for next matchup; done when new matchup starts
+          } else if (data.status === 'game_over') {
+            displayGameOver();
+            if (pollInterval) clearInterval(pollInterval); 
+          } else if (data.status === 'waiting' || data.status === 'setup') {
+            stopVotingCountdown(); stopPreVotingCountdown();
+            showView('waiting');
+            showMessage(data.status === 'setup' ? 'Game is being set up. Please wait.' : 'Waiting for the game to start...', 'info', true);
+            lastDisplayedVotingMatchupId = null; activeVotingMatchupDetails = null;
+          } else {
+            console.warn("Unknown game state or no active matchup:", data);
+            showView('waiting'); 
+            showMessage('Waiting for game to start or continue.', 'info', true);
+          }
+        })
+        .withFailureHandler(error => {
+          showMessage('Error fetching game data: ' + error.message, 'error');
+          console.error('Fetch error:', error);
+        })
+        .getGameData();
+    }
+
+    function handleVote(promptCode) {
+      showLoader(true);
+      document.getElementById('voteA-button').disabled = true;
+      document.getElementById('voteB-button').disabled = true;
+
+      google.script.run
+        .withSuccessHandler(response => {
+          showLoader(false);
+          if (response.success && response.updatedMatchup) {
+            showMessage(response.message, 'success');
+            currentGameState.activeMatchup = response.updatedMatchup; 
+            activeVotingMatchupDetails = response.updatedMatchup; 
+            updateVotingView(response.updatedMatchup); 
+          } else {
+            showMessage(response.message || 'Vote could not be registered.', 'error');
+            if (response.updatedMatchup) { 
+                currentGameState.activeMatchup = response.updatedMatchup;
+                activeVotingMatchupDetails = response.updatedMatchup;
+                updateVotingView(response.updatedMatchup);
+            } else if (activeVotingMatchupDetails && currentGameState.status === 'voting' && !activeVotingMatchupDetails.currentUserHasVoted && votingTimeRemaining > 0){
+                document.getElementById('voteA-button').disabled = false;
+                document.getElementById('voteB-button').disabled = false;
+            }
+          }
+        })
+        .withFailureHandler(error => {
+          showLoader(false);
+          showMessage('Error submitting vote: ' + error.message, 'error');
+          if (activeVotingMatchupDetails && currentGameState.status === 'voting' && !activeVotingMatchupDetails.currentUserHasVoted && votingTimeRemaining > 0) {
+             document.getElementById('voteA-button').disabled = false;
+             document.getElementById('voteB-button').disabled = false;
+          }
+          console.error('Vote error:', error);
+        })
+        .submitVote({ code: promptCode });
+    }
+
+    // --- Initialization ---
+    window.addEventListener('load', () => {
+      fetchGameData(); 
+      pollInterval = setInterval(fetchGameData, 5000); 
+
+      document.getElementById('refresh-bracket-button').onclick = () => {
+          renderBracket(currentGameState.bracket); 
+          showView('bracket');
+      };
+    });
+
+  </script>
+</body>
+</html>
