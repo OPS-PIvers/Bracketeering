@@ -1260,3 +1260,134 @@ function loadPromptsFromSheet_() {
     gameState.prompts = []; 
   }
 }
+
+// --- Test Simulation Function ---
+function runTest() {
+  simulatePreVotingCountdownTest();
+}
+
+function simulatePreVotingCountdownTest() {
+  Logger.log("VERIFICATION: Starting test simulation.");
+
+  // Backup original gameState if necessary, or ensure it's clean for test
+  let originalGameState = JSON.parse(JSON.stringify(gameState));
+
+  // 1. Setup Game State
+  gameState.status = 'waiting';
+  gameState.prompts = [
+    {id: 'p1', text: 'Prompt 1'},
+    {id: 'p2', text: 'Prompt 2'},
+    {id: 'p3', text: 'Prompt 3'},
+    {id: 'p4', text: 'Prompt 4'}
+  ];
+  gameState.selectedTab = 'TestTab'; // Needs a tab for some functions to not break
+  gameState.students = []; // Clear students
+  gameState.bracket = []; // Clear bracket
+  gameState.activeMatchup = null;
+
+  Logger.log("VERIFICATION: Initial prompts set: " + JSON.stringify(gameState.prompts.map(p => p.id)));
+
+  setupInitialBracket_();
+  if (!gameState.bracket || gameState.bracket.length === 0 || !gameState.bracket[0] || gameState.bracket[0].length === 0) {
+    Logger.log("VERIFICATION: ERROR - setupInitialBracket_ did not create the first round.");
+    gameState = originalGameState; // Restore
+    return;
+  }
+  Logger.log("VERIFICATION: setupInitialBracket_ called. Bracket round 1 length: " + gameState.bracket[0].length);
+  // Expected: p1 vs p2, p3 vs p4 (assuming shuffle keeps them somewhat in order for simplicity of test)
+  // For the test, let's ensure the matchup is p1 vs p2, then p3 vs p4.
+  // We can't directly control shuffle, so we'll inspect and potentially adjust for test predictability.
+  // However, for this specific test, the actual prompt IDs don't matter as much as the sequence of operations.
+
+  // Simulate one matchup completing
+  gameState.currentRound = 0;
+  gameState.currentMatchupIndex = 0;
+  Logger.log("VERIFICATION: Set currentRound=0, currentMatchupIndex=0.");
+
+  if (!prepareNextMatchup_()) {
+    Logger.log("VERIFICATION: ERROR - First prepareNextMatchup_ failed.");
+    gameState = originalGameState; // Restore
+    return;
+  }
+  if (!gameState.activeMatchup) {
+    Logger.log("VERIFICATION: ERROR - First prepareNextMatchup_ did not set activeMatchup.");
+    gameState = originalGameState; // Restore
+    return;
+  }
+  Logger.log("VERIFICATION: First prepareNextMatchup_ called. Active matchup: " + gameState.activeMatchup.promptA.id + " vs " + gameState.activeMatchup.promptB.id);
+
+  // Assume the first matchup (gameState.bracket[0][0]) completes.
+  // Let's find which prompts are in the first matchup from the bracket.
+  const firstMatchupPrompts = gameState.bracket[0][0];
+  if (!firstMatchupPrompts || !firstMatchupPrompts.promptA) {
+      Logger.log("VERIFICATION: ERROR - Bracket structure unexpected for first matchup.");
+      gameState = originalGameState; // Restore
+      return;
+  }
+  gameState.bracket[0][0].winner = firstMatchupPrompts.promptA; // Winner is A
+  Logger.log("VERIFICATION: Set winner for first matchup (bracket[0][0]) to: " + firstMatchupPrompts.promptA.id);
+
+  gameState.currentMatchupIndex = 1; // Move to the second matchup
+  Logger.log("VERIFICATION: Set currentMatchupIndex=1.");
+
+  // Critical step: Simulate advancing to the *next* matchup
+  if (!prepareNextMatchup_()) {
+    Logger.log("VERIFICATION: ERROR - Second prepareNextMatchup_ failed (should set up p3 vs p4).");
+    // This might happen if there's only 1 matchup from 2 prompts, but we have 4.
+    // Or if the first matchup was the only one in the round and it's now complete.
+    // Let's check bracket state.
+    Logger.log("VERIFICATION: Bracket state for round 0: " + JSON.stringify(gameState.bracket[0]));
+    gameState = originalGameState; // Restore
+    return;
+  }
+  if (!gameState.activeMatchup) {
+    Logger.log("VERIFICATION: ERROR - Second prepareNextMatchup_ did not set activeMatchup.");
+    gameState = originalGameState; // Restore
+    return;
+  }
+  Logger.log("VERIFICATION: Second prepareNextMatchup_ called. New active matchup: " + gameState.activeMatchup.promptA.id + " vs " + gameState.activeMatchup.promptB.id);
+
+  gameState.status = 'voting'; // As if teacher launched this next matchup
+  Logger.log("VERIFICATION: gameState.status set to 'voting'.");
+
+  // 2. Simulate Client-Side `fetchGameData` and `handleActiveGameStates`
+  let currentClientGameState = JSON.parse(JSON.stringify(gameState)); // Client gets a copy
+
+  // For the test, lastDisplayedVotingMatchupId was from the *previous* matchup.
+  // Previous matchup was bracket[0][0]
+  const prevMatchup = gameState.bracket[0][0];
+  let lastDisplayedVotingMatchupId = prevMatchup.promptA.id + "_" + prevMatchup.promptB.id;
+  Logger.log("VERIFICATION: Set lastDisplayedVotingMatchupId to: " + lastDisplayedVotingMatchupId);
+
+  // --- Start of simulated WebApp.html logic ---
+  if (currentClientGameState.status === 'voting' && currentClientGameState.activeMatchup) {
+    const newActiveMatchupIdForVotingView = currentClientGameState.activeMatchup.promptA.id + "_" + currentClientGameState.activeMatchup.promptB.id;
+    Logger.log("VERIFICATION: In client sim - newActiveMatchupIdForVotingView: " + newActiveMatchupIdForVotingView);
+
+    // Key block from WebApp.html
+    // We need to ensure lastDisplayedVotingMatchupId is different from newActiveMatchupIdForVotingView
+    // to trigger the pre-voting countdown logic.
+    if (lastDisplayedVotingMatchupId !== newActiveMatchupIdForVotingView && currentClientGameState.status !== 'voting_pending_pre_countdown') {
+      Logger.log('VERIFICATION: Entering pre-voting countdown logic block.');
+      // currentClientGameState.status = 'voting_pending_pre_countdown'; // This happens client-side, simulate state change
+      // activeVotingMatchupDetails = currentClientGameState.activeMatchup; // Client-side variable
+
+      Logger.log('VERIFICATION: renderBracket would be called.');
+      Logger.log('VERIFICATION: highlightActiveMatchupInBracket would be called for ' + currentClientGameState.activeMatchup.promptA.text);
+      Logger.log('VERIFICATION: showView("bracket") would be called.');
+      Logger.log('VERIFICATION: startPreVotingCountdown would be called.');
+    } else {
+      Logger.log('VERIFICATION: SKIPPED pre-voting countdown logic block. Conditions:');
+      Logger.log('VERIFICATION: lastDisplayedVotingMatchupId (' + lastDisplayedVotingMatchupId + ') !== newActiveMatchupIdForVotingView (' + newActiveMatchupIdForVotingView + '): ' + (lastDisplayedVotingMatchupId !== newActiveMatchupIdForVotingView));
+      Logger.log('VERIFICATION: currentClientGameState.status ('+currentClientGameState.status+') !== "voting_pending_pre_countdown": ' + (currentClientGameState.status !== 'voting_pending_pre_countdown'));
+    }
+  } else {
+    Logger.log('VERIFICATION: Client sim - Conditions not met for voting block.');
+    Logger.log('VERIFICATION: Client sim - status: ' + currentClientGameState.status + ', activeMatchup: ' + (currentClientGameState.activeMatchup ? 'exists' : 'null'));
+  }
+  // --- End of simulated WebApp.html logic ---
+
+  // Restore original gameState
+  gameState = originalGameState;
+  Logger.log("VERIFICATION: Test simulation finished. Restored original gameState.");
+}

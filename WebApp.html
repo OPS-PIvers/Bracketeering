@@ -334,6 +334,7 @@
       justify-content: space-around; 
       gap: 30px; 
       min-width: 180px; 
+      overflow: visible; /* Allow scaled children to not be clipped */
     }
     .matchup {
       background-color: rgba(255, 255, 255, 0.1);
@@ -343,9 +344,12 @@
       transition: transform 0.3s ease-out, box-shadow 0.3s ease-out;
     }
     .matchup.highlight-next-matchup {
-        transform: scale(1.05);
+        transform: scale(2); /* Significantly increased scale */
+        /* transform-origin: center center; */ /* Default, but can be explicit if needed */
         box-shadow: 0 0 20px var(--accent-color), 0 0 30px var(--secondary-color);
         border: 2px solid var(--accent-color);
+        z-index: 100; /* Ensure it's on top */
+        /* position: relative; is already on .matchup, so z-index will apply */
     }
     .matchup-item {
       background-color: rgba(255, 255, 255, 0.2);
@@ -788,7 +792,15 @@
             highlightActiveMatchupInBracket(currentGameState.activeMatchup);
             showView('bracket');
             showMessage(`Next matchup: ${currentGameState.activeMatchup.promptA.text} vs ${currentGameState.activeMatchup.promptB.text}`, 'info', true);
-            startPreVotingCountdown(currentGameState.activeMatchup); 
+
+            // Add a delay before starting the pre-voting countdown
+            setTimeout(() => {
+                // Ensure the view is still 'bracket' and the matchup is the same,
+                // in case state changed rapidly (though unlikely with a 1s delay here)
+                if (views.bracket.classList.contains('active') && activeVotingMatchupDetails === currentGameState.activeMatchup) {
+                    startPreVotingCountdown(currentGameState.activeMatchup);
+                }
+            }, 1000); // 1000 milliseconds = 1 second delay
         } 
         else if (currentGameState.status !== 'voting_pending_pre_countdown') {
             activeVotingMatchupDetails = currentGameState.activeMatchup;
