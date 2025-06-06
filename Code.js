@@ -427,6 +427,16 @@ function findFinalWinner_(bracket) {
   return null; 
 }
 
+function _showGameOverAlert(resultsSaved) {
+  let gameOverMessage = 'Game Over! Final winner determined.';
+  if (resultsSaved) {
+    gameOverMessage += ' Results saved.';
+  } else {
+    gameOverMessage += ' WARNING: Failed to save detailed results to the spreadsheet. Please check logs.';
+  }
+  SpreadsheetApp.getUi().alert(gameOverMessage);
+}
+
 // --- Custom Menu ---
 function onOpen() {
   SpreadsheetApp.getUi()
@@ -529,43 +539,32 @@ function launchNextRoundMenuItem() {
         if (gameState.bracket[gameState.currentRound].length === 1 && gameState.bracket[gameState.currentRound][0].winner) {
             gameState.status = 'game_over';
             gameState.activeMatchup = null;
-            const resultsSaved = saveFinalResults_(); // Save results when game ends
-            let gameOverMessage = 'Game Over! Final winner determined.';
-            if (resultsSaved) {
-              gameOverMessage += ' Results saved.';
-            } else {
-              gameOverMessage += ' WARNING: Failed to save detailed results to the spreadsheet. Please check logs.';
-            }
-            SpreadsheetApp.getUi().alert(gameOverMessage);
+            const resultsSaved = saveFinalResults_();
+            _showGameOverAlert(resultsSaved);
         } else {
             gameState.currentRound++;
             gameState.currentMatchupIndex = 0; 
             setupNextRoundBracket_(); 
 
-            if (gameState.status === 'game_over') {
-                const resultsSaved = saveFinalResults_(); // Save results when game ends
-                let gameOverMessage = 'Game Over! Final winner determined.';
-                if (resultsSaved) {
-                  gameOverMessage += ' Results saved.';
-                } else {
-                  gameOverMessage += ' WARNING: Failed to save detailed results to the spreadsheet. Please check logs.';
+            if (gameState.status === 'game_over') { // status might be set by setupNextRoundBracket_
+                // If game ended after setting up next round (e.g. only one winner advanced to become overall winner)
+                // Ensure activeMatchup is null if game is truly over. setupNextRoundBracket_ already logs this.
+                if (gameState.activeMatchup && gameState.bracket[gameState.bracket.length-1].length === 1 && gameState.bracket[gameState.bracket.length-1][0].winner) {
+                   gameState.activeMatchup = null; // Ensure consistency
                 }
-                SpreadsheetApp.getUi().alert(gameOverMessage);
+                const resultsSaved = saveFinalResults_();
+                _showGameOverAlert(resultsSaved);
             } else {
                 const nextRoundSuccess = prepareNextMatchup_();
                 if (nextRoundSuccess) {
                     gameState.status = 'voting';
                     SpreadsheetApp.getUi().alert(`Advanced to Round ${gameState.currentRound + 1}. Next matchup launched!`);
                 } else {
+                    // This 'else' implies prepareNextMatchup_ returned false.
+                    // Check if the game ended because no more matchups could be prepared.
                     if(gameState.status === 'game_over'){ 
-                        const resultsSaved = saveFinalResults_(); // Save results when game ends
-                        let gameOverMessage = 'Game Over! Final winner determined.';
-                        if (resultsSaved) {
-                          gameOverMessage += ' Results saved.';
-                        } else {
-                          gameOverMessage += ' WARNING: Failed to save detailed results to the spreadsheet. Please check logs.';
-                        }
-                        SpreadsheetApp.getUi().alert(gameOverMessage);
+                        const resultsSaved = saveFinalResults_();
+                        _showGameOverAlert(resultsSaved);
                     } else {
                         SpreadsheetApp.getUi().alert('Could not prepare next matchup after advancing round. Game might be stuck or over. Check logs.');
                     }
@@ -1311,18 +1310,6 @@ function submitVote(voteData) {
   }
 
   return response;
-  // This part for invalid code was moved up earlier in the logic in the previous diff.
-  // This 'else' block for 'if (isVoteForA || isVoteForB)' is no longer directly reachable
-  // if the invalid code check is comprehensive.
-  // However, to be safe, if somehow an invalid state is reached:
-  // } else {
-  //   return {
-  //       success: false, message: 'Invalid prompt code or internal error processing vote.',
-  //       updatedMatchup: {
-  //           ...gameState.activeMatchup,
-  //           currentUserHasVoted: gameState.activeMatchup.voters ? gameState.activeMatchup.voters.includes(studentNickname) : false
-  //       }
-  //   };
 }
 
 // --- Google Sheet Interaction ---
