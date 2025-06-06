@@ -1228,20 +1228,24 @@
 
           checkGameStateAndShowView();
 
-          // Restart polling with new speed
-          clearInterval(pollInterval);
-          pollInterval = setInterval(fetchGameData, pollSpeed);
+          _resetPollInterval(pollSpeed);
         })
         .withFailureHandler(error => {
           // Slow down on errors
           pollSpeed = Math.min(Math.round(pollSpeed * POLL_SPEED_INCREASE_FACTOR_ERROR), MAX_ERROR_POLL_SPEED_MS);
-          clearInterval(pollInterval);
-          pollInterval = setInterval(fetchGameData, pollSpeed);
+          _resetPollInterval(pollSpeed);
 
           showMessage('Error fetching game data: ' + error.message, 'error');
           console.error('Fetch error:', error);
         })
         .getGameData();
+    }
+
+    function _resetPollInterval(newSpeed) {
+      clearInterval(pollInterval);
+      pollInterval = setInterval(fetchGameData, newSpeed);
+      // Optional: Add a generic log here if desired, e.g.:
+      // console.log("Polling interval reset to: " + newSpeed + "ms");
     }
 
     function handleVote(promptCode) {
