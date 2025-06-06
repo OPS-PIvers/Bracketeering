@@ -569,6 +569,23 @@
   </div>
 
   <script>
+    // Polling constants
+    const INITIAL_POLL_SPEED_MS = 5000;
+    const MAX_IDLE_POLL_SPEED_MS = 15000;
+    const MAX_ERROR_POLL_SPEED_MS = 20000;
+    const VOTING_POLL_SPEED_MS = 2000;
+    const WAITING_ROOM_POLL_SPEED_MS = 8000;
+    const DEFAULT_OTHER_STATE_POLL_SPEED_MS = 5000;
+
+    const NO_CHANGE_COUNT_THRESHOLD = 3;
+    const POLL_SPEED_INCREASE_FACTOR_IDLE = 1.2;
+    const POLL_SPEED_INCREASE_FACTOR_ERROR = 1.5;
+
+    // Game Status Constants
+    const GAME_STATUS_VOTING = 'voting';
+    const GAME_STATUS_WAITING = 'waiting';
+    // Add other game statuses here if they are used in client-side logic
+
     const loader = document.getElementById('loader');
     const messageArea = document.getElementById('message-area');
     const views = {
@@ -581,7 +598,7 @@
     };
     let currentGameState = {};
     let pollInterval;
-    let pollSpeed = 5000; // Start with 5 seconds
+    let pollSpeed = INITIAL_POLL_SPEED_MS; // Start with 5 seconds
     let noChangeCount = 0;
     let gameStateHash = '';
     let currentStudentInfo = null; // {firstName, lastName, nickname}
@@ -1188,20 +1205,20 @@
           if (newStateHash === gameStateHash) {
             noChangeCount++;
             // Slow down polling if nothing is changing
-            if (noChangeCount > 3) {
-              pollSpeed = Math.min(pollSpeed * 1.2, 15000); // Max 15 seconds
+            if (noChangeCount > NO_CHANGE_COUNT_THRESHOLD) {
+              pollSpeed = Math.min(Math.round(pollSpeed * POLL_SPEED_INCREASE_FACTOR_IDLE), MAX_IDLE_POLL_SPEED_MS); // Max 15 seconds
             }
           } else {
             noChangeCount = 0;
             gameStateHash = newStateHash;
 
             // Speed up during active voting
-            if (data.status === 'voting') {
-              pollSpeed = 2000; // 2 seconds during voting
-            } else if (data.status === 'waiting') {
-              pollSpeed = 8000; // 8 seconds in waiting room
+            if (data.status === GAME_STATUS_VOTING) {
+              pollSpeed = VOTING_POLL_SPEED_MS; // 2 seconds during voting
+            } else if (data.status === GAME_STATUS_WAITING) {
+              pollSpeed = WAITING_ROOM_POLL_SPEED_MS; // 8 seconds in waiting room
             } else {
-              pollSpeed = 5000; // 5 seconds for other states
+              pollSpeed = DEFAULT_OTHER_STATE_POLL_SPEED_MS; // 5 seconds for other states
             }
           }
 
@@ -1217,7 +1234,7 @@
         })
         .withFailureHandler(error => {
           // Slow down on errors
-          pollSpeed = Math.min(pollSpeed * 1.5, 20000);
+          pollSpeed = Math.min(Math.round(pollSpeed * POLL_SPEED_INCREASE_FACTOR_ERROR), MAX_ERROR_POLL_SPEED_MS);
           clearInterval(pollInterval);
           pollInterval = setInterval(fetchGameData, pollSpeed);
 
