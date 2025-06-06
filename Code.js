@@ -441,6 +441,8 @@ function _showGameOverAlert(resultsSaved) {
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('Bracket Battle Game')
+    .addItem('🎮 Teacher Dashboard', 'openTeacherDashboard')
+    .addSeparator()
     .addItem('Select Tab & Start Game', 'startGameMenuItem')
     .addItem('Launch Next Round/Prompts', 'launchNextRoundMenuItem')
     .addItem('Reset Current Game', 'resetGameMenuItem')
@@ -1359,4 +1361,13 @@ function loadPromptsFromSheet_() {
     Logger.log(`Error loading prompts from sheet: ${e.toString()}\nStack: ${e.stack}`);
     gameState.prompts = []; 
   }
+}
+
+// --- Teacher Dashboard Function ---
+function openTeacherDashboard() {
+  const htmlOutput = HtmlService.createHtmlOutputFromFile('TeacherDashboard')
+    .setWidth(1000)
+    .setHeight(700);
+
+  SpreadsheetApp.getUi().showModalDialog(htmlOutput, 'Teacher Dashboard - Bracket Battle');
 }

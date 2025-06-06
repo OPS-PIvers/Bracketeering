@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teacher Dashboard - Bracket Battle</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f7fa;
+        }
+        .dashboard {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .status-box {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .big-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px;
+            min-width: 200px;
+        }
+        .big-button:hover {
+            background: #5a67d8;
+        }
+        .danger-button {
+            background: #e53e3e;
+        }
+        .student-count {
+            font-size: 24px;
+            color: #667eea;
+            font-weight: bold;
+        }
+        .current-status {
+            font-size: 18px;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .status-waiting { background: #fff3cd; color: #856404; }
+        .status-voting { background: #d4edda; color: #155724; }
+        .status-game_over { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="header">
+            <h1>🏆 Teacher Dashboard</h1>
+            <p>Control your Bracket Battle game</p>
+        </div>
+
+        <div class="status-box">
+            <h2>📊 Game Status</h2>
+            <div id="game-status" class="current-status">Loading...</div>
+            <div>Students Registered: <span id="student-count" class="student-count">0</span></div>
+            <div>Current Round: <span id="current-round">-</span></div>
+        </div>
+
+        <div class="status-box">
+            <h2>🎮 Game Controls</h2>
+            <button class="big-button" onclick="refreshStatus()">🔄 Refresh Status</button>
+            <button class="big-button" onclick="advanceGame()">⏭️ Advance Game</button>
+            <button class="big-button danger-button" onclick="resetGame()">🔄 Reset Game</button>
+        </div>
+
+        <div class="status-box">
+            <h2>👥 Students</h2>
+            <div id="student-list">Loading students...</div>
+        </div>
+
+        <div class="status-box">
+            <h2>🎯 Current Matchup</h2>
+            <div id="current-matchup">No active matchup</div>
+        </div>
+    </div>
+
+    <script>
+        let currentData = {};
+
+        function refreshStatus() {
+            document.getElementById('game-status').textContent = 'Loading...';
+
+            google.script.run
+                .withSuccessHandler(updateDashboard)
+                .withFailureHandler(showError)
+                .getGameData();
+        }
+
+        function updateDashboard(gameData) {
+            currentData = gameData;
+
+            // Update status
+            const statusElement = document.getElementById('game-status');
+            statusElement.textContent = `Status: ${gameData.status}`;
+            statusElement.className = `current-status status-${gameData.status}`;
+
+            // Update counts
+            document.getElementById('student-count').textContent = gameData.students.length;
+            document.getElementById('current-round').textContent = gameData.currentRound + 1;
+
+            // Update student list
+            const studentList = document.getElementById('student-list');
+            if (gameData.students.length === 0) {
+                studentList.innerHTML = '<p>No students registered yet</p>';
+            } else {
+                studentList.innerHTML = gameData.students.map(student =>
+                    `<div style="padding: 5px; background: #f8f9fa; margin: 2px; border-radius: 3px;">
+                        ${student.nickname} (${student.firstName} ${student.lastName})
+                    </div>`
+                ).join('');
+            }
+
+            // Update current matchup
+            const matchupElement = document.getElementById('current-matchup');
+            if (gameData.activeMatchup) {
+                matchupElement.innerHTML = `
+                    <strong>${gameData.activeMatchup.promptA.text}</strong>
+                    <br>VS<br>
+                    <strong>${gameData.activeMatchup.promptB.text}</strong>
+                    <br><br>
+                    Votes: ${gameData.activeMatchup.votesA} vs ${gameData.activeMatchup.votesB}
+                `;
+            } else {
+                matchupElement.textContent = 'No active matchup';
+            }
+        }
+
+        function advanceGame() {
+            if (confirm('Advance to next round/matchup?')) {
+                google.script.run
+                    .withSuccessHandler(() => {
+                        alert('Game advanced!');
+                        refreshStatus();
+                    })
+                    .withFailureHandler(showError)
+                    .launchNextRoundMenuItem();
+            }
+        }
+
+        function resetGame() {
+            if (confirm('Reset the entire game? This cannot be undone!')) {
+                google.script.run
+                    .withSuccessHandler(() => {
+                        alert('Game reset!');
+                        refreshStatus();
+                    })
+                    .withFailureHandler(showError)
+                    .resetGameMenuItem();
+            }
+        }
+
+        function showError(error) {
+            alert('Error: ' + error.message);
+        }
+
+        // Auto-refresh every 10 seconds
+        setInterval(refreshStatus, 10000);
+
+        // Load initial data
+        refreshStatus();
+    </script>
+</body>
+</html>
