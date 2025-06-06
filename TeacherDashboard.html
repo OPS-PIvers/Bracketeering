@@ -78,8 +78,11 @@
         <div class="status-box">
             <h2>🎮 Game Controls</h2>
             <button class="big-button" onclick="refreshStatus()">🔄 Refresh Status</button>
-            <button class="big-button" onclick="advanceGame()">⏭️ Advance Game</button>
+            <button class="big-button" onclick="advanceGame()" id="advance-btn">⏭️ Start Voting / Advance Game</button>
             <button class="big-button danger-button" onclick="resetGame()">🔄 Reset Game</button>
+            <div id="game-instructions" style="margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 5px; font-size: 14px;">
+                <strong>Instructions:</strong> <span id="instruction-text">Loading...</span>
+            </div>
         </div>
 
         <div class="status-box">
@@ -116,6 +119,34 @@
             // Update counts
             document.getElementById('student-count').textContent = gameData.students.length;
             document.getElementById('current-round').textContent = gameData.currentRound + 1;
+
+            // Update instructions based on game status
+            const instructionText = document.getElementById('instruction-text');
+            const advanceBtn = document.getElementById('advance-btn');
+            
+            if (gameData.status === 'waiting') {
+                instructionText.textContent = 'Students are in the waiting room. Click "Start Voting / Advance Game" to begin the first voting round.';
+                advanceBtn.textContent = '🎯 Start First Voting Round';
+                advanceBtn.style.background = '#28a745';
+            } else if (gameData.status === 'voting') {
+                instructionText.textContent = 'Voting is active! Students can now vote. Click "Advance Game" to move to the next matchup.';
+                advanceBtn.textContent = '⏭️ Advance to Next Matchup';
+                advanceBtn.style.background = '#667eea';
+            } else if (gameData.status === 'round_over') {
+                instructionText.textContent = 'Round completed. Click "Advance Game" to continue to the next round.';
+                advanceBtn.textContent = '⏭️ Continue to Next Round';
+                advanceBtn.style.background = '#667eea';
+            } else if (gameData.status === 'game_over') {
+                instructionText.textContent = 'Game is complete! You can reset to start a new game.';
+                advanceBtn.textContent = '🏆 Game Complete';
+                advanceBtn.style.background = '#6c757d';
+                advanceBtn.disabled = true;
+            } else {
+                instructionText.textContent = 'Game status: ' + gameData.status;
+                advanceBtn.textContent = '⏭️ Advance Game';
+                advanceBtn.style.background = '#667eea';
+                advanceBtn.disabled = false;
+            }
 
             // Update student list
             const studentList = document.getElementById('student-list');
