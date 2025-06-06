@@ -581,6 +581,9 @@
     };
     let currentGameState = {};
     let pollInterval;
+    let pollSpeed = 5000; // Start with 5 seconds
+    let noChangeCount = 0;
+    let gameStateHash = '';
     let currentStudentInfo = null; // {firstName, lastName, nickname}
     
     let lastDisplayedVotingMatchupId = null; 
@@ -1179,12 +1182,45 @@
       google.script.run
         .withSuccessHandler(data => {
           const previousStatus = currentGameState.status;
+          const newStateHash = JSON.stringify(data);
+
+          // Check if anything changed
+          if (newStateHash === gameStateHash) {
+            noChangeCount++;
+            // Slow down polling if nothing is changing
+            if (noChangeCount > 3) {
+              pollSpeed = Math.min(pollSpeed * 1.2, 15000); // Max 15 seconds
+            }
+          } else {
+            noChangeCount = 0;
+            gameStateHash = newStateHash;
+
+            // Speed up during active voting
+            if (data.status === 'voting') {
+              pollSpeed = 2000; // 2 seconds during voting
+            } else if (data.status === 'waiting') {
+              pollSpeed = 8000; // 8 seconds in waiting room
+            } else {
+              pollSpeed = 5000; // 5 seconds for other states
+            }
+          }
+
           currentGameState = data;
           console.log("Game data received:", data);
+          console.log("Poll speed adjusted to:", pollSpeed + "ms");
 
           checkGameStateAndShowView();
+
+          // Restart polling with new speed
+          clearInterval(pollInterval);
+          pollInterval = setInterval(fetchGameData, pollSpeed);
         })
         .withFailureHandler(error => {
+          // Slow down on errors
+          pollSpeed = Math.min(pollSpeed * 1.5, 20000);
+          clearInterval(pollInterval);
+          pollInterval = setInterval(fetchGameData, pollSpeed);
+
           showMessage('Error fetching game data: ' + error.message, 'error');
           console.error('Fetch error:', error);
         })
@@ -1278,7 +1314,7 @@
     // --- Initialization ---
     window.addEventListener('load', () => {
       fetchGameData(); 
-      pollInterval = setInterval(fetchGameData, 5000); 
+      // fetchGameData will now handle setting up its own interval
 
       document.getElementById('refresh-bracket-button').onclick = () => {
           renderBracket(currentGameState.bracket); 
