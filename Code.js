@@ -220,17 +220,19 @@ function loadGameStateFromProperties_(tabName = null) {
 }
 
 function saveGameStateToProperties_() {
+  if (!gameState || typeof gameState !== 'object' || !gameState.selectedTab) {
+    Logger.log('CRITICAL_ERROR: Attempted to save game state with invalid global gameState or missing selectedTab. Aborting save.');
+    return false;
+  }
   try {
-    if (!gameState.selectedTab) {
-      Logger.log('No selected tab to save game state for.');
-      return;
-    }
-    
+    // gameState.selectedTab is already validated by the check above
     const key = getGameStateKey_(gameState.selectedTab);
     PropertiesService.getScriptProperties().setProperty(key, JSON.stringify(gameState));
     Logger.log(`GameState saved to PropertiesService for tab: ${gameState.selectedTab}`);
+    return true; // Added return
   } catch (e) {
     Logger.log(`Error saving game state to PropertiesService: ${e.toString()}`);
+    return false; // Added return
   }
 }
 
@@ -478,7 +480,11 @@ function continueGameSetup(showAlert = true) {
   gameState.students = []; // Reset students for new game
   setupInitialBracket_(); 
   
-  saveGameStateToProperties_();
+  const saveSuccess = saveGameStateToProperties_();
+  if (!saveSuccess && showAlert) {
+    SpreadsheetApp.getUi().alert("CRITICAL ERROR: Failed to save game state. Please try the operation again. If the issue persists, contact support or check script logs.");
+    return false; // Indicate failure
+  }
 
   if (showAlert) {
     SpreadsheetApp.getUi().alert(`Game set to "Waiting Room" for tab "${gameState.selectedTab}". Students can now register and join the web app.`);
@@ -523,16 +529,28 @@ function launchNextRoundMenuItem() {
         if (gameState.bracket[gameState.currentRound].length === 1 && gameState.bracket[gameState.currentRound][0].winner) {
             gameState.status = 'game_over';
             gameState.activeMatchup = null;
-            saveFinalResults_(); // Save results when game ends
-            SpreadsheetApp.getUi().alert('Game Over! Final winner determined and results saved.');
+            const resultsSaved = saveFinalResults_(); // Save results when game ends
+            let gameOverMessage = 'Game Over! Final winner determined.';
+            if (resultsSaved) {
+              gameOverMessage += ' Results saved.';
+            } else {
+              gameOverMessage += ' WARNING: Failed to save detailed results to the spreadsheet. Please check logs.';
+            }
+            SpreadsheetApp.getUi().alert(gameOverMessage);
         } else {
             gameState.currentRound++;
             gameState.currentMatchupIndex = 0; 
             setupNextRoundBracket_(); 
 
             if (gameState.status === 'game_over') {
-                saveFinalResults_(); // Save results when game ends
-                SpreadsheetApp.getUi().alert('Game Over! Final winner determined and results saved.');
+                const resultsSaved = saveFinalResults_(); // Save results when game ends
+                let gameOverMessage = 'Game Over! Final winner determined.';
+                if (resultsSaved) {
+                  gameOverMessage += ' Results saved.';
+                } else {
+                  gameOverMessage += ' WARNING: Failed to save detailed results to the spreadsheet. Please check logs.';
+                }
+                SpreadsheetApp.getUi().alert(gameOverMessage);
             } else {
                 const nextRoundSuccess = prepareNextMatchup_();
                 if (nextRoundSuccess) {
@@ -540,8 +558,14 @@ function launchNextRoundMenuItem() {
                     SpreadsheetApp.getUi().alert(`Advanced to Round ${gameState.currentRound + 1}. Next matchup launched!`);
                 } else {
                     if(gameState.status === 'game_over'){ 
-                        saveFinalResults_(); // Save results when game ends
-                        SpreadsheetApp.getUi().alert('Game Over! Final winner determined and results saved.');
+                        const resultsSaved = saveFinalResults_(); // Save results when game ends
+                        let gameOverMessage = 'Game Over! Final winner determined.';
+                        if (resultsSaved) {
+                          gameOverMessage += ' Results saved.';
+                        } else {
+                          gameOverMessage += ' WARNING: Failed to save detailed results to the spreadsheet. Please check logs.';
+                        }
+                        SpreadsheetApp.getUi().alert(gameOverMessage);
                     } else {
                         SpreadsheetApp.getUi().alert('Could not prepare next matchup after advancing round. Game might be stuck or over. Check logs.');
                     }
@@ -554,7 +578,10 @@ function launchNextRoundMenuItem() {
       }
     }
   }
-  saveGameStateToProperties_();
+  const saveSuccess = saveGameStateToProperties_();
+  if (!saveSuccess) {
+    SpreadsheetApp.getUi().alert("CRITICAL ERROR: Failed to save game state after launching round/matchup. Please try the operation again. If the issue persists, contact support or check script logs.");
+  }
 }
 
 function resetGameMenuItem() {
@@ -583,9 +610,13 @@ function resetGameMenuItem() {
   };
   
   loadPromptsFromSheet_();
-  saveGameStateToProperties_();
+  const saveSuccess = saveGameStateToProperties_();
   
-  SpreadsheetApp.getUi().alert(`Game has been reset for tab "${currentActiveTab}". Prompts reloaded from sheet.`);
+  if (!saveSuccess) {
+    SpreadsheetApp.getUi().alert(`Game for tab "${currentActiveTab}" has been reset, but CRITICAL ERROR: Failed to save this reset state. Please try resetting again or contact support.`);
+  } else {
+    SpreadsheetApp.getUi().alert(`Game has been reset for tab "${currentActiveTab}". Prompts reloaded from sheet.`);
+  }
 }
 
 function clearAllGameDataMenuItem() {
@@ -903,16 +934,34 @@ function registerStudent(registrationData) {
     sessionKey: sessionKey
   };
   
-  // Add to game state
-  gameState.students.push(newStudent);
-  
-  // Add to sheet
+  // Add to sheet first
   const sheetSuccess = addStudentToSheet_(newStudent);
   if (!sheetSuccess) {
-    Logger.log('Warning: Could not add student to sheet, but proceeding with registration.');
+    Logger.log(`CRITICAL: Failed to add student ${nickname} to sheet. Registration aborted.`);
+    return {
+      success: false,
+      message: 'Failed to register student due to a server error. Please try again or contact the host.'
+    };
   }
   
-  saveGameStateToProperties_();
+  // Add to game state only if sheet write was successful
+  gameState.students.push(newStudent);
+  const saveSuccess = saveGameStateToProperties_();
+
+  if (!saveSuccess) {
+    Logger.log('CRITICAL: saveGameStateToProperties_ failed after student registration. Subsequent game operations may rely on stale data until a save succeeds.');
+    // Student is in gameState in memory, but it might not persist.
+    // Sheet write was successful, so student is on the list.
+    return {
+      success: false, // Indicate overall operation might have issues.
+      message: `Welcome, ${nickname}! You are on the list, but there was a server error saving your registration. Please inform the host.`,
+      student: {
+        firstName: cleanFirstName,
+        lastName: cleanLastName,
+        nickname: nickname
+      }
+    };
+  }
   
   Logger.log(`Student registered: ${cleanFirstName} ${cleanLastName} as ${nickname}`);
   
@@ -979,7 +1028,20 @@ function confirmStudentIdentity(confirmationData) {
   const sessionKey = Session.getTemporaryActiveUserKey();
   existingStudent.sessionKey = sessionKey;
   
-  saveGameStateToProperties_();
+  const saveSuccess = saveGameStateToProperties_();
+
+  if (!saveSuccess) {
+    Logger.log('CRITICAL: saveGameStateToProperties_ failed after student identity confirmation. Subsequent game operations may rely on stale data until a save succeeds.');
+    return {
+      success: false, // Indicate overall operation might have issues.
+      message: `Welcome back, ${cleanNickname}! Your identity is confirmed, but there was a server error saving this session. Please inform the host.`,
+      student: {
+        firstName: existingStudent.firstName,
+        lastName: existingStudent.lastName,
+        nickname: existingStudent.nickname
+      }
+    };
+  }
   
   Logger.log(`Student identity confirmed: ${cleanFirstName} ${cleanLastName} as ${cleanNickname}`);
   
@@ -1022,7 +1084,10 @@ function getGameData() {
         determineWinnerAndAdvance_();
 
         if (gameState.status === 'game_over') { 
-            saveFinalResults_(); // Save results when game ends
+            const resultsSaved = saveFinalResults_(); // Save results when game ends
+            if (!resultsSaved) {
+                Logger.log('CRITICAL: Game ended and saveFinalResults_ failed during getGameData auto-advance.');
+            }
             Logger.log('Auto-advanced: Game is over.');
         } else {
             const success = prepareNextMatchup_(); 
@@ -1034,7 +1099,10 @@ function getGameData() {
                     if (gameState.bracket[gameState.currentRound].length === 1 && gameState.bracket[gameState.currentRound][0].winner) {
                         gameState.status = 'game_over';
                         gameState.activeMatchup = null; 
-                        saveFinalResults_(); // Save results when game ends
+                        const resultsSaved = saveFinalResults_(); // Save results when game ends
+                        if (!resultsSaved) {
+                            Logger.log('CRITICAL: Game ended and saveFinalResults_ failed during getGameData auto-advance.');
+                        }
                         Logger.log('Auto-advanced: Game Over! Final winner determined.');
                     } else {
                         gameState.currentRound++;
@@ -1042,7 +1110,10 @@ function getGameData() {
                         setupNextRoundBracket_();
 
                         if (gameState.status === 'game_over') { 
-                            saveFinalResults_(); // Save results when game ends
+                            const resultsSaved = saveFinalResults_(); // Save results when game ends
+                            if (!resultsSaved) {
+                                Logger.log('CRITICAL: Game ended and saveFinalResults_ failed during getGameData auto-advance.');
+                            }
                             Logger.log('Auto-advanced: Game Over! Determined after setting up next round.');
                         } else {
                             const nextRoundSuccess = prepareNextMatchup_();
@@ -1051,7 +1122,10 @@ function getGameData() {
                                 Logger.log(`Auto-advanced: Advanced to Round ${gameState.currentRound + 1}. Next matchup launched after timer.`);
                             } else {
                                 if (gameState.status === 'game_over') {
-                                    saveFinalResults_(); // Save results when game ends
+                                    const resultsSaved = saveFinalResults_(); // Save results when game ends
+                                    if (!resultsSaved) {
+                                        Logger.log('CRITICAL: Game ended and saveFinalResults_ failed during getGameData auto-advance.');
+                                    }
                                     Logger.log('Auto-advanced: Game Over! No more matchups to prepare.');
                                 } else {
                                     Logger.log('Auto-advanced: Could not prepare next matchup after advancing round. Game might be stuck or over.');
@@ -1066,7 +1140,10 @@ function getGameData() {
                 }
             }
         }
-        saveGameStateToProperties_();
+        const saveSuccess = saveGameStateToProperties_();
+        if (!saveSuccess) {
+            Logger.log('CRITICAL: saveGameStateToProperties_ failed in getGameData auto-advance. Subsequent game operations may rely on stale data until a save succeeds.');
+        }
     }
   
     let activeMatchupClient = null;
@@ -1169,39 +1246,18 @@ function submitVote(voteData) {
       };
   }
   
-  let votedForPrompt = '';
-  
-  if (code === gameState.activeMatchup.codeA) {
-    gameState.activeMatchup.votesA++;
-    currentMatchupInBracket.votesA = gameState.activeMatchup.votesA;
-    votedForPrompt = gameState.activeMatchup.promptA.text;
-    voteRegistered = true;
-  } else if (code === gameState.activeMatchup.codeB) {
-    gameState.activeMatchup.votesB++;
-    currentMatchupInBracket.votesB = gameState.activeMatchup.votesB;
-    votedForPrompt = gameState.activeMatchup.promptB.text;
-    voteRegistered = true;
-  }
+  let votedForPromptText = '';
+  let isVoteForA = false;
+  let isVoteForB = false;
 
-  if (voteRegistered) {
-    currentMatchupInBracket.voters.push(studentNickname);
-    if (!gameState.activeMatchup.voters) gameState.activeMatchup.voters = []; 
-    gameState.activeMatchup.voters.push(studentNickname);
-    
-    // Record vote in sheet
-    const roundNumber = gameState.activeMatchup.round + 1;
-    recordVoteInSheet_(studentNickname, roundNumber, votedForPrompt);
-    
-    Logger.log(`Vote registered for ${code} by ${studentNickname}. Voters: ${currentMatchupInBracket.voters.length}. Votes: A:${gameState.activeMatchup.votesA}, B:${gameState.activeMatchup.votesB}`);
-    saveGameStateToProperties_();
-    return {
-      success: true, message: 'Vote registered!',
-      updatedMatchup: {
-          ...gameState.activeMatchup, 
-          currentUserHasVoted: true 
-      }
-    };
+  if (code === gameState.activeMatchup.codeA) {
+    votedForPromptText = gameState.activeMatchup.promptA.text;
+    isVoteForA = true;
+  } else if (code === gameState.activeMatchup.codeB) {
+    votedForPromptText = gameState.activeMatchup.promptB.text;
+    isVoteForB = true;
   } else {
+    // Invalid code, should not happen if UI is correct, but good to handle
     return { 
         success: false, message: 'Invalid prompt code.',
         updatedMatchup: { 
@@ -1210,6 +1266,63 @@ function submitVote(voteData) {
         }
     };
   }
+
+  // Record vote in sheet BEFORE updating game state
+  const roundNumber = gameState.activeMatchup.round + 1;
+  const sheetVoteSuccess = recordVoteInSheet_(studentNickname, roundNumber, votedForPromptText);
+
+  if (!sheetVoteSuccess) {
+    Logger.log(`CRITICAL: Failed to record vote in sheet for ${studentNickname}, Round ${roundNumber}, Voted for: ${votedForPromptText}. Vote not counted.`);
+    return {
+      success: false,
+      message: 'Your vote could not be recorded due to a server error. Please try again.'
+    };
+  }
+
+  // Proceed with game state update only if sheet write was successful
+  if (isVoteForA) {
+    gameState.activeMatchup.votesA++;
+    currentMatchupInBracket.votesA = gameState.activeMatchup.votesA;
+  } else if (isVoteForB) {
+    gameState.activeMatchup.votesB++;
+    currentMatchupInBracket.votesB = gameState.activeMatchup.votesB;
+  }
+
+  currentMatchupInBracket.voters.push(studentNickname);
+  if (!gameState.activeMatchup.voters) gameState.activeMatchup.voters = [];
+  gameState.activeMatchup.voters.push(studentNickname);
+
+  Logger.log(`Vote registered for ${code} by ${studentNickname}. Voters: ${currentMatchupInBracket.voters.length}. Votes: A:${gameState.activeMatchup.votesA}, B:${gameState.activeMatchup.votesB}`);
+  const saveSuccess = saveGameStateToProperties_();
+
+  const response = {
+    success: true,
+    message: 'Vote registered!',
+    updatedMatchup: {
+        ...gameState.activeMatchup,
+        currentUserHasVoted: true
+    }
+  };
+
+  if (!saveSuccess) {
+      Logger.log('CRITICAL: saveGameStateToProperties_ failed after vote submission. Subsequent game operations may rely on stale data until a save succeeds.');
+      response.success = false; // Indicate overall operation might have issues.
+      response.message = 'Your vote was recorded, but there was a server error saving the game state. Please inform the host.';
+  }
+
+  return response;
+  // This part for invalid code was moved up earlier in the logic in the previous diff.
+  // This 'else' block for 'if (isVoteForA || isVoteForB)' is no longer directly reachable
+  // if the invalid code check is comprehensive.
+  // However, to be safe, if somehow an invalid state is reached:
+  // } else {
+  //   return {
+  //       success: false, message: 'Invalid prompt code or internal error processing vote.',
+  //       updatedMatchup: {
+  //           ...gameState.activeMatchup,
+  //           currentUserHasVoted: gameState.activeMatchup.voters ? gameState.activeMatchup.voters.includes(studentNickname) : false
+  //       }
+  //   };
 }
 
 // --- Google Sheet Interaction ---

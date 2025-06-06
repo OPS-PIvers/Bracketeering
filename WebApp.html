@@ -1201,34 +1201,76 @@
       document.getElementById('voteA-button').disabled = true;
       document.getElementById('voteB-button').disabled = true;
 
+      // S2: Store attempted matchup IDs
+      const attemptedMatchupPromptAId = activeVotingMatchupDetails ? activeVotingMatchupDetails.promptA.id : null;
+      const attemptedMatchupPromptBId = activeVotingMatchupDetails ? activeVotingMatchupDetails.promptB.id : null;
+
       google.script.run
         .withSuccessHandler(response => {
-          showLoader(false);
           if (response.success && response.updatedMatchup) {
+            showLoader(false); // Hide loader on immediate success
             showMessage(response.message, 'success');
             currentGameState.activeMatchup = response.updatedMatchup; 
             activeVotingMatchupDetails = response.updatedMatchup; 
             updateVotingView(response.updatedMatchup); 
-          } else {
-            showMessage(response.message || 'Vote could not be registered.', 'error');
-            if (response.updatedMatchup) { 
-                currentGameState.activeMatchup = response.updatedMatchup;
-                activeVotingMatchupDetails = response.updatedMatchup;
-                updateVotingView(response.updatedMatchup);
-            } else if (activeVotingMatchupDetails && currentGameState.status === 'voting' && !activeVotingMatchupDetails.currentUserHasVoted && votingTimeRemaining > 0){
-                document.getElementById('voteA-button').disabled = false;
-                document.getElementById('voteB-button').disabled = false;
-            }
+          } else { // response.success is false, or success true but no updatedMatchup (should not happen for vote)
+            // S2: Initiate inner getGameData call to check if game advanced
+            google.script.run
+              .withSuccessHandler(latestGameData => {
+                showLoader(false); // Hide loader after inner call completes
+                const originalSubmitVoteMessage = response.message; // from submitVote call
+
+                let gameLikelyAdvanced = false;
+                if (latestGameData.status !== 'voting' ||
+                    (latestGameData.activeMatchup && attemptedMatchupPromptAId && attemptedMatchupPromptBId &&
+                     (latestGameData.activeMatchup.promptA.id !== attemptedMatchupPromptAId || latestGameData.activeMatchup.promptB.id !== attemptedMatchupPromptBId)) ||
+                    (!latestGameData.activeMatchup && activeVotingMatchupDetails != null)
+                   ) {
+                  gameLikelyAdvanced = true;
+                }
+
+                if (gameLikelyAdvanced) {
+                  showMessage("Voting for that matchup just closed, possibly due to game advancement. Please wait for updates.", "error");
+                  // UI will be updated by the next poll of fetchGameData or a manual refresh.
+                  // No direct button re-enabling here to avoid race conditions.
+                } else {
+                  // Game hasn't advanced, so the original error message from submitVote is likely the correct one.
+                  showMessage(originalSubmitVoteMessage || 'Vote could not be registered.', 'error');
+                  // If submitVote returned updatedMatchup (e.g. for alreadyVoted), reflect that.
+                  if (response.updatedMatchup) {
+                      currentGameState.activeMatchup = response.updatedMatchup;
+                      activeVotingMatchupDetails = response.updatedMatchup;
+                      updateVotingView(response.updatedMatchup); // Re-render with current (possibly error) state
+                  }
+                  // Explicitly do not re-enable buttons here. updateVotingView or polling should handle it.
+                }
+              })
+              .withFailureHandler(innerError => {
+                showLoader(false); // Hide loader on inner call failure
+                // Show the original error from submitVote, as we couldn't confirm game advancement.
+                showMessage(response.message || 'Vote could not be registered. Additionally, failed to check for game updates.', 'error');
+                console.error('Inner getGameData error:', innerError);
+                // Explicitly do not re-enable buttons here.
+              })
+              .getGameData();
           }
         })
-        .withFailureHandler(error => {
+        .withFailureHandler(error => { // Failure of the submitVote call itself
           showLoader(false);
           showMessage('Error submitting vote: ' + error.message, 'error');
-          if (activeVotingMatchupDetails && currentGameState.status === 'voting' && !activeVotingMatchupDetails.currentUserHasVoted && votingTimeRemaining > 0) {
+          // Only re-enable buttons if the call failed for a transient reason AND the current matchup is still valid for voting.
+          // This relies on activeVotingMatchupDetails reflecting the state *before* the failed vote.
+          if (activeVotingMatchupDetails &&
+              currentGameState.status === 'voting' &&
+              !activeVotingMatchupDetails.currentUserHasVoted &&
+              activeVotingMatchupDetails.votingEndTime && Date.now() < activeVotingMatchupDetails.votingEndTime &&
+              activeVotingMatchupDetails.promptA.id === attemptedMatchupPromptAId && // ensure matchup didn't change during this brief error
+              activeVotingMatchupDetails.promptB.id === attemptedMatchupPromptBId
+             ) {
              document.getElementById('voteA-button').disabled = false;
              document.getElementById('voteB-button').disabled = false;
           }
-          console.error('Vote error:', error);
+          console.error('Submit Vote error:', error);
         })
         .submitVote({ code: promptCode, studentNickname: currentStudentInfo.nickname });
     }
